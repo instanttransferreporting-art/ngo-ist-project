@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { format, parseISO, isToday } from "date-fns";
 import { fr } from "date-fns/locale";
 import { capitalizeFirst, getScoreColor } from "@/lib/utils";
@@ -257,7 +257,7 @@ export function EmployeeSheetView({
 
   const visibleDays = data ? data.days.filter((d) => isDayVisible(d.date)) : [];
 
-  const groupedAssignments = Object.entries(groups).map(([groupName, items]) => ({ groupName, items }));
+  const groupedAssignments = Object.entries(groups).map(([groupName, items]) => ({ groupName, items, id: groupName }));
 
   const weeks = useMemo(() => {
     const out: Array<{ key: string; label: string; days: DayData[] }> = [];
@@ -500,8 +500,8 @@ export function EmployeeSheetView({
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedAssignments.map(({ groupName, items }) => (
-                      <>
+                    {groupedAssignments.map(({ id, groupName, items }) => (
+                      <React.Fragment key={id}>
                         <tr>
                           <td className="sticky z-10 bg-amber-50 border-r border-b border-slate-200 px-3 py-2 font-semibold text-amber-800" style={{ left: 0, position: "sticky" }} colSpan={3}>
                             {groupName}
@@ -540,7 +540,7 @@ export function EmployeeSheetView({
                             })}
                           </tr>
                         ))}
-                      </>
+                      </React.Fragment>
                     ))}
 
                     <tr>
