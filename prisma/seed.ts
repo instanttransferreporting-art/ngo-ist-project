@@ -20,7 +20,7 @@ async function main() {
   await prisma.dayLockConfig.upsert({
     where: { id: "global" },
     update: {},
-    create: { id: "global", mode: "FREE" },
+    create: { id: "global", mode: "FREE", template: "A" },
   });
   console.log("✓ DayLockConfig created (FREE mode)");
 

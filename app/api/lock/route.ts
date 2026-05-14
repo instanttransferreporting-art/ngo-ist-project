@@ -5,6 +5,7 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   mode: z.enum(["FREE", "LOCKED", "HIDDEN"]),
+  template: z.enum(["A", "B"]).optional(),
 });
 
 export async function GET() {
@@ -12,9 +13,16 @@ export async function GET() {
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const config = await prisma.dayLockConfig.findUnique({ where: { id: "global" } });
+  if (!config) {
+    return Response.json({ id: "global", mode: "FREE", template: "A" });
+  }
 
-  // Return FREE as default if config doesn't exist yet
-  return Response.json(config ?? { id: "global", mode: "FREE" });
+  return Response.json({
+    id: config.id,
+    mode: config.mode,
+    template: (config as unknown as { template?: "A" | "B" }).template ?? "A",
+    updatedAt: config.updatedAt,
+  });
 }
 
 export async function PUT(req: NextRequest) {
@@ -29,11 +37,31 @@ export async function PUT(req: NextRequest) {
     return Response.json({ error: "Données invalides" }, { status: 400 });
   }
 
-  const config = await prisma.dayLockConfig.upsert({
-    where: { id: "global" },
-    create: { id: "global", mode: parsed.data.mode },
-    update: { mode: parsed.data.mode },
-  });
+  try {
+    const config = await prisma.dayLockConfig.upsert({
+      where: { id: "global" },
+      create: { id: "global", mode: parsed.data.mode, template: parsed.data.template ?? "A" },
+      update: { mode: parsed.data.mode, ...(parsed.data.template ? { template: parsed.data.template } : {}) },
+    });
 
-  return Response.json(config);
+    return Response.json(config);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+
+    if (message.includes("Unknown argument `template`")) {
+      const fallback = await prisma.dayLockConfig.upsert({
+        where: { id: "global" },
+        create: { id: "global", mode: parsed.data.mode },
+        update: { mode: parsed.data.mode },
+      });
+
+      return Response.json({
+        ...fallback,
+        template: "A",
+        warning: "Template global indisponible tant que la base n'est pas migrée (npx prisma db push)",
+      });
+    }
+
+    return Response.json({ error: "Échec de mise à jour des paramètres" }, { status: 500 });
+  }
 }

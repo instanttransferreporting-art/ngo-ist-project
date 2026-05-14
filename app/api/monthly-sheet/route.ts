@@ -22,6 +22,33 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const targetMonthDate = new Date(year, month - 1, 1);
+
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, createdAt: true },
+  });
+
+  if (!userRecord) {
+    return Response.json({ error: "Utilisateur introuvable" }, { status: 404 });
+  }
+
+  const minDate = new Date(userRecord.createdAt.getFullYear(), userRecord.createdAt.getMonth(), 1);
+  const maxDate = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  if (targetMonthDate < minDate || targetMonthDate > maxDate) {
+    return Response.json(
+      {
+        error: "Mois hors plage autorisée",
+        minYear: minDate.getFullYear(),
+        minMonth: minDate.getMonth() + 1,
+        maxYear: maxDate.getFullYear(),
+        maxMonth: maxDate.getMonth() + 1,
+      },
+      { status: 400 }
+    );
+  }
+
   const monthStart = new Date(year, month - 1, 1);
   const monthEnd = new Date(year, month, 0);
 
@@ -105,7 +132,12 @@ export async function GET(req: NextRequest) {
     userId,
     month,
     year,
+    minYear: minDate.getFullYear(),
+    minMonth: minDate.getMonth() + 1,
+    maxYear: maxDate.getFullYear(),
+    maxMonth: maxDate.getMonth() + 1,
     lockMode: lockConfig?.mode ?? "FREE",
+    template: lockConfig?.template ?? "A",
     assignments: assignments.map((a) => ({
       taskId: a.taskId,
       group: a.task.group,

@@ -31,6 +31,11 @@ enum LockMode {
   HIDDEN
 }
 
+enum SheetTemplate {
+  A
+  B
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -111,6 +116,7 @@ model LeaveRequest {
 model DayLockConfig {
   id        String   @id @default("global")
   mode      LockMode @default(FREE)
+  template  SheetTemplate @default(A)
   updatedAt DateTime @updatedAt
 }
 

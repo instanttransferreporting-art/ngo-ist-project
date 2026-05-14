@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 
 type LockMode = "FREE" | "LOCKED" | "HIDDEN";
+type SheetTemplate = "A" | "B";
 
 const modes: { value: LockMode; label: string; desc: string; icon: string }[] = [
   {
@@ -27,29 +28,50 @@ const modes: { value: LockMode; label: string; desc: string; icon: string }[] = 
 
 export default function SettingsPage() {
   const [mode, setMode] = useState<LockMode>("FREE");
+  const [template, setTemplate] = useState<SheetTemplate>("A");
+  const [templateSupported, setTemplateSupported] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/lock").then((r) => r.json()).then((d) => {
       setMode(d.mode ?? "FREE");
+      if (typeof d.template === "string") {
+        setTemplate(d.template === "B" ? "B" : "A");
+        setTemplateSupported(true);
+      } else {
+        setTemplateSupported(false);
+      }
       setLoading(false);
     });
   }, []);
 
   async function saveMode() {
     setSaving(true);
-    const res = await fetch("/api/lock", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-    if (res.ok) {
+    setError("");
+    setSuccess(false);
+    try {
+      const res = await fetch("/api/lock", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(templateSupported ? { mode, template } : { mode }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? "Échec de l'enregistrement des paramètres");
+        return;
+      }
+
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
+    } catch {
+      setError("Erreur réseau: impossible d'enregistrer les paramètres");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   return (
@@ -62,6 +84,12 @@ export default function SettingsPage() {
       {success && (
         <div className="mb-4 bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-lg">
           Configuration enregistrée avec succès.
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+          {error}
         </div>
       )}
 
@@ -100,6 +128,43 @@ export default function SettingsPage() {
                 </label>
               ))}
             </div>
+
+            {templateSupported ? (
+            <div className="mb-6">
+              <h3 className="font-semibold text-slate-800 mb-2">Template d&apos;affichage global</h3>
+              <p className="text-sm text-slate-500 mb-3">Ce choix est imposé à tous les employés.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className={`p-4 rounded-xl border-2 cursor-pointer ${template === "A" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}>
+                  <input
+                    type="radio"
+                    name="sheetTemplate"
+                    value="A"
+                    checked={template === "A"}
+                    onChange={() => setTemplate("A")}
+                    className="mr-2"
+                  />
+                  <span className="font-medium text-slate-800">Template A</span>
+                  <p className="text-xs text-slate-500 mt-1">Liste journalière (vue actuelle).</p>
+                </label>
+                <label className={`p-4 rounded-xl border-2 cursor-pointer ${template === "B" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}>
+                  <input
+                    type="radio"
+                    name="sheetTemplate"
+                    value="B"
+                    checked={template === "B"}
+                    onChange={() => setTemplate("B")}
+                    className="mr-2"
+                  />
+                  <span className="font-medium text-slate-800">Template B</span>
+                  <p className="text-xs text-slate-500 mt-1">Grille mensuelle type sheet.</p>
+                </label>
+              </div>
+            </div>
+            ) : (
+              <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+                Le choix du template global n&apos;est pas encore disponible sur cette base. Exécutez <strong>npx prisma db push</strong> puis rechargez la page.
+              </div>
+            )}
 
             <button
               onClick={saveMode}
