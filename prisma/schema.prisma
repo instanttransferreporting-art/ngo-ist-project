@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum TaskType {
+  PREDEFINED
+  EXTRA
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LockMode {
+  FREE
+  LOCKED
+  HIDDEN
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  password      String
+  role          Role     @default(EMPLOYEE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignments   TaskAssignment[]
+  dailyLogs     DailyTaskLog[]
+  leaveRequests LeaveRequest[]
+  monthlySheets MonthlySheet[]
+}
+
+model TaskLibrary {
+  id          String   @id @default(cuid())
+  group       String
+  title       String
+  deadline    String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  assignments TaskAssignment[]
+  dailyLogs   DailyTaskLog[]
+}
+
+model TaskAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  taskId    String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task TaskLibrary @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskId])
+}
+
+/// Logs for both predefined tasks (taskId set) and extra tasks (taskId null).
+/// For predefined tasks the (userId, taskId, date) triple is unique.
+/// Extra tasks only need (userId, date, id) — multiple extras allowed per day.
+model DailyTaskLog {
+  id         String   @id @default(cuid())
+  userId     String
+  taskId     String?
+  date       DateTime @db.Date
+  done       Boolean  @default(false)
+  type       TaskType @default(PREDEFINED)
+  extraLabel String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task TaskLibrary? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, taskId, date])
+  @@index([userId, date])
+}
+
+model LeaveRequest {
+  id        String      @id @default(cuid())
+  userId    String
+  startDate DateTime    @db.Date
+  endDate   DateTime    @db.Date
+  reason    String?
+  status    LeaveStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Singleton record (id = "global") — tracks the current lock mode for day editing.
+model DayLockConfig {
+  id        String   @id @default("global")
+  mode      LockMode @default(FREE)
+  updatedAt DateTime @updatedAt
+}
+
+/// Created once per (employee, month, year) the first time the sheet is opened.
+model MonthlySheet {
+  id        String   @id @default(cuid())
+  userId    String
+  month     Int
+  year      Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month, year])
+}
