@@ -54,6 +54,8 @@ interface SheetData {
   maxMonth: number;
   maxYear: number;
   lockMode: "FREE" | "LOCKED" | "HIDDEN";
+  globalTemplate?: "A" | "B";
+  userTemplate?: "A" | "B" | null;
   template: "A" | "B";
   assignments: Assignment[];
   days: DayData[];
@@ -121,6 +123,31 @@ export function EmployeeSheetView({
       body: JSON.stringify({ mode: data.lockMode, template: nextTemplate }),
     });
     if (res.ok) await fetchSheet(true);
+    setSavingTemplate(false);
+  }
+
+  async function saveUserTemplate(nextTemplate: "A" | "B" | null) {
+    if (isAdmin || !data) return;
+
+    setSavingTemplate(true);
+    setData((prev) => {
+      if (!prev) return prev;
+      const resolved = nextTemplate ?? prev.globalTemplate ?? "A";
+      return { ...prev, template: resolved, userTemplate: nextTemplate };
+    });
+    setError("");
+
+    const res = await fetch(`/api/users/${userId}/template-preference`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ template: nextTemplate }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "Impossible d'enregistrer votre template.");
+      await fetchSheet(true);
+    }
     setSavingTemplate(false);
   }
 
@@ -307,6 +334,7 @@ export function EmployeeSheetView({
 
   const todayDay = visibleDays.find((d) => d.date === todayStr);
   const activeTemplate = data?.template ?? "A";
+  const employeeTemplateChoice = data?.userTemplate ?? "GLOBAL";
 
   if (loading) {
     return (
@@ -385,26 +413,43 @@ export function EmployeeSheetView({
               <option value="B">Template B - Grille mensuelle</option>
             </select>
           ) : (
-            <div className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 bg-slate-50">
-              Template imposé: {activeTemplate}
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={employeeTemplateChoice}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === "GLOBAL") saveUserTemplate(null);
+                  else saveUserTemplate(value as "A" | "B");
+                }}
+                disabled={savingTemplate}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white disabled:opacity-60"
+              >
+                <option value="GLOBAL">Suivre le template global admin ({data.globalTemplate ?? "A"})</option>
+                <option value="A">Mon template: A - Liste journaliere</option>
+                <option value="B">Mon template: B - Grille mensuelle</option>
+              </select>
+              <div className="px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 bg-slate-50">
+                Defaut global admin: {data.globalTemplate ?? "A"}
+              </div>
             </div>
           )}
         </div>
 
         {/* Monthly stats */}
-        <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm font-medium ${scoreColorClass}`}>
-          <span>Score: {data.stats.score20}/20</span>
-          <span>|</span>
-          <span>{data.stats.percentTotal}%</span>
-          <span>|</span>
-          <span>{data.stats.totalDone}/{data.stats.totalTasks} tâches</span>
-          {data.stats.leaveDays > 0 && (
-            <>
+          {isAdmin && <div
+              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm font-medium ${scoreColorClass}`}>
+              <span>Score: {data.stats.score20}/20</span>
               <span>|</span>
-              <span>{data.stats.leaveDays} j. congé</span>
-            </>
-          )}
-        </div>
+              <span>{data.stats.percentTotal}%</span>
+              <span>|</span>
+              <span>{data.stats.totalDone}/{data.stats.totalTasks} tâches</span>
+              {data.stats.leaveDays > 0 && (
+                  <>
+                      <span>|</span>
+                      <span>{data.stats.leaveDays} j. congé</span>
+                  </>
+              )}
+          </div>}
       </div>
 
       {refreshing && (

@@ -6,6 +6,10 @@ function getResend() {
 
 const FROM = process.env.RESEND_FROM ?? "NGO IST <noreply@yourdomain.com>";
 
+function nl2br(input: string): string {
+  return input.replace(/\n/g, "<br/>");
+}
+
 // ─── Reminder email (18h) ─────────────────────────────────────────────────────
 
 export async function sendReminderEmail(opts: {
@@ -13,26 +17,33 @@ export async function sendReminderEmail(opts: {
   name: string;
   date: string;
   pendingCount: number;
+  cc?: string[];
+  body?: string;
+  subject?: string;
 }) {
-  const { to, name, date, pendingCount } = opts;
-  await getResend().emails.send({
+  const { to, name, date, pendingCount, cc, subject } = opts;
+  const body = opts.body ?? `Il vous reste <strong>${pendingCount} tâche(s)</strong> à compléter pour aujourd'hui (<strong>${date}</strong>).`;
+
+  const { error: sendError } = await getResend().emails.send({
     from: FROM,
     to,
-    subject: `📋 Rappel – Remplissez vos tâches du ${date}`,
+    cc,
+    subject: subject ?? `Rappel - Remplissez vos taches du ${date}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
-        <h2 style="color:#1d4ed8">Rappel de tâches – NGO IST</h2>
+        <h2 style="color:#1d4ed8">Rappel de taches - NGO IST</h2>
         <p>Bonjour <strong>${name}</strong>,</p>
-        <p>Il vous reste <strong>${pendingCount} tâche(s)</strong> à compléter pour aujourd'hui (<strong>${date}</strong>).</p>
-        <p>Connectez-vous à l'application pour les cocher avant la fin de journée.</p>
+        <p>${nl2br(body)}</p>
+        <p>Connectez-vous a l'application pour les cocher avant la fin de journee.</p>
         <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "https://yourapp.vercel.app"}/employee"
            style="display:inline-block;margin-top:16px;padding:10px 24px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none">
           Accéder à mon espace
         </a>
-        <p style="color:#6b7280;font-size:12px;margin-top:32px">NGO IST – Système de gestion des tâches</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">NGO IST - Systeme de gestion des taches</p>
       </div>
     `,
   });
+  if (sendError) throw new Error(`Resend error: ${sendError.message}`);
 }
 
 // ─── Daily report email (22h) ─────────────────────────────────────────────────
@@ -49,8 +60,12 @@ export async function sendDailyReportEmail(opts: {
   to: string[];
   date: string;
   rows: DailyReportRow[];
+  cc?: string[];
+  body?: string;
+  subject?: string;
 }) {
-  const { to, date, rows } = opts;
+  const { to, date, rows, cc, subject } = opts;
+  const body = opts.body ?? `Rapport journalier du ${date}.`;
 
   const tableRows = rows
     .map((r) => {
@@ -72,13 +87,16 @@ export async function sendDailyReportEmail(opts: {
     })
     .join("");
 
-  await getResend().emails.send({
+  const { error: sendError } = await getResend().emails.send({
     from: FROM,
     to,
-    subject: `📊 Rapport journalier – ${date}`,
+    cc,
+    subject: subject ?? `Rapport journalier - ${date}`,
+
     html: `
       <div style="font-family:Arial,sans-serif;max-width:700px;margin:auto">
-        <h2 style="color:#1d4ed8">Rapport journalier – ${date}</h2>
+        <h2 style="color:#1d4ed8">Rapport journalier - ${date}</h2>
+        <p>${nl2br(body)}</p>
         <table style="width:100%;border-collapse:collapse;margin-top:16px">
           <thead>
             <tr style="background:#f3f4f6">
@@ -90,8 +108,72 @@ export async function sendDailyReportEmail(opts: {
           </thead>
           <tbody>${tableRows}</tbody>
         </table>
-        <p style="color:#6b7280;font-size:12px;margin-top:32px">NGO IST – Envoi automatique à 22h</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">NGO IST - Envoi automatique a 22h</p>
       </div>
     `,
   });
+  if (sendError) throw new Error(`Resend error: ${sendError.message}`);
+}
+
+export interface MonthlyReportRow {
+  name: string;
+  score20: number;
+  percentTotal: number;
+  totalDone: number;
+  totalTasks: number;
+  leaveDays: number;
+  workingDays: number;
+}
+
+export async function sendMonthlyReportEmail(opts: {
+  to: string[];
+  cc?: string[];
+  monthLabel: string;
+  rows: MonthlyReportRow[];
+  body?: string;
+  subject?: string;
+}) {
+  const { to, cc, monthLabel, rows, subject } = opts;
+  const body = opts.body ?? `Rapport mensuel de ${monthLabel}.`;
+
+  const tableRows = rows
+    .map((r) => {
+      return `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${r.name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.score20}/20</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.percentTotal}%</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.totalDone}/${r.totalTasks}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.leaveDays}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.workingDays}</td>
+        </tr>`;
+    })
+    .join("");
+
+  const { error: sendError } = await getResend().emails.send({
+    from: FROM,
+    to,
+    cc,
+    subject: subject ?? `Rapport mensuel - ${monthLabel}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:780px;margin:auto">
+        <h2 style="color:#1d4ed8">Rapport mensuel - ${monthLabel}</h2>
+        <p>${nl2br(body)}</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:16px">
+          <thead>
+            <tr style="background:#f3f4f6">
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb">Employe</th>
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">Score /20</th>
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">%</th>
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">Taches</th>
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">J. conge</th>
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">J. ouvres</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    `,
+  });
+  if (sendError) throw new Error(`Resend error: ${sendError.message}`);
 }

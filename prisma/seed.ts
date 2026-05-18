@@ -24,6 +24,20 @@ async function main() {
   });
   console.log("✓ DayLockConfig created (FREE mode)");
 
+  await prisma.emailConfig.upsert({
+    where: { id: "global" },
+    update: {},
+    create: {
+      id: "global",
+      recipients: [],
+      cc: [],
+      reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
+      reportBody: "Rapport journalier du {date}.",
+      monthlyReportBody: "Rapport mensuel de {monthLabel}.",
+    },
+  });
+  console.log("✓ EmailConfig created");
+
   // Create admin user
   const adminEmail = process.env.ADMIN_SEED_EMAIL ?? "admin@example.com";
   const adminPassword = process.env.ADMIN_SEED_PASSWORD ?? "admin1234";

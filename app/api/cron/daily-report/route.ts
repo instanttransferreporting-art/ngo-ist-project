@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendDailyReportEmail, DailyReportRow } from "@/lib/email";
+import { getSession } from "@/lib/auth";
 import { isSunday, format } from "date-fns";
+
+function renderTemplate(template: string, vars: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_m, key: string) => String(vars[key] ?? ""));
+}
 
 /**
  * POST /api/cron/daily-report
@@ -10,8 +15,16 @@ import { isSunday, format } from "date-fns";
  */
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const isCronCall = auth === `Bearer ${process.env.CRON_SECRET}`;
+  const origin = req.headers.get("origin") ?? "";
+  const isLocalDevCall =
+    process.env.NODE_ENV !== "production" &&
+    (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:"));
+  if (!isCronCall) {
+    const session = await getSession();
+    if ((!session || session.role !== "ADMIN") && !isLocalDevCall) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const today = new Date();
@@ -22,10 +35,24 @@ export async function POST(req: NextRequest) {
   const todayDate = new Date(format(today, "yyyy-MM-dd"));
   const dateStr = format(today, "dd/MM/yyyy");
 
-  const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-  const adminEmails = admins.map((a) => a.email);
+  const emailConfig = await prisma.emailConfig.upsert({
+    where: { id: "global" },
+    update: {},
+    create: {
+      id: "global",
+      recipients: [],
+      cc: [],
+      reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
+      reportBody: "Rapport journalier du {date}.",
+      monthlyReportBody: "Rapport mensuel de {monthLabel}.",
+    },
+  });
 
-  if (adminEmails.length === 0) {
+  const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
+  const fallbackAdminEmails = admins.map((a) => a.email);
+  const recipients = emailConfig.recipients.length > 0 ? emailConfig.recipients : fallbackAdminEmails;
+
+  if (recipients.length === 0) {
     return Response.json({ ok: false, error: "No admin emails found" });
   }
 
@@ -75,8 +102,14 @@ export async function POST(req: NextRequest) {
   );
 
   try {
-    await sendDailyReportEmail({ to: adminEmails, date: dateStr, rows });
-    return Response.json({ ok: true, date: dateStr, recipients: adminEmails.length });
+    const avgPercent = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.percent, 0) / rows.length) : 0;
+    const body = renderTemplate(emailConfig.reportBody, {
+      date: dateStr,
+      usersCount: rows.length,
+      avgPercent,
+    });
+    await sendDailyReportEmail({ to: recipients, cc: emailConfig.cc, date: dateStr, rows, body });
+    return Response.json({ ok: true, date: dateStr, recipients: recipients.length });
   } catch (err) {
     console.error("Failed to send daily report:", err);
     return Response.json({ ok: false, error: String(err) }, { status: 500 });

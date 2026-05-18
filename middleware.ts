@@ -8,6 +8,7 @@ export async function middleware(req: NextRequest) {
   const normalizedPath = pathname.startsWith("/dashboard/")
     ? pathname.replace("/dashboard", "")
     : pathname;
+  const isUserTemplatePreferencePath = /^\/api\/users\/[^/]+\/template-preference$/.test(pathname);
 
   // Allow public paths
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
@@ -26,7 +27,13 @@ export async function middleware(req: NextRequest) {
   // Protect cron routes — must come from Vercel (Authorization header)
   if (pathname.startsWith("/api/cron")) {
     const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (auth === `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.next();
+    }
+
+    // Also allow authenticated admins to trigger cron endpoints manually from UI.
+    const session = await getSessionFromRequest(req);
+    if (!session || session.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return NextResponse.next();
@@ -44,7 +51,7 @@ export async function middleware(req: NextRequest) {
   // Guard admin routes
   if (
     (normalizedPath.startsWith("/admin") ||
-      pathname.startsWith("/api/users") ||
+      (pathname.startsWith("/api/users") && !isUserTemplatePreferencePath) ||
       pathname.startsWith("/api/lock") ||
       (pathname.startsWith("/api/leaves") &&
         req.method !== "GET" &&

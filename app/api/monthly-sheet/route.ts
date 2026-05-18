@@ -24,10 +24,28 @@ export async function GET(req: NextRequest) {
 
   const targetMonthDate = new Date(year, month - 1, 1);
 
-  const userRecord = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, createdAt: true },
-  });
+  let userRecord: { id: string; createdAt: Date; templatePreference?: "A" | "B" | null } | null = null;
+  try {
+    userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, createdAt: true, templatePreference: true },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const knownCode = typeof err === "object" && err !== null && "code" in err
+      ? String((err as { code?: string }).code)
+      : "";
+
+    if (knownCode === "P2022" || message.includes("templatePreference") || message.includes("Unknown field")) {
+      const fallback = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, createdAt: true },
+      });
+      userRecord = fallback ? { ...fallback, templatePreference: null } : null;
+    } else {
+      throw err;
+    }
+  }
 
   if (!userRecord) {
     return Response.json({ error: "Utilisateur introuvable" }, { status: 404 });
@@ -137,7 +155,9 @@ export async function GET(req: NextRequest) {
     maxYear: maxDate.getFullYear(),
     maxMonth: maxDate.getMonth() + 1,
     lockMode: lockConfig?.mode ?? "FREE",
-    template: lockConfig?.template ?? "A",
+    globalTemplate: lockConfig?.template ?? "A",
+    userTemplate: userRecord.templatePreference,
+    template: userRecord.templatePreference ?? lockConfig?.template ?? "A",
     assignments: assignments.map((a) => ({
       taskId: a.taskId,
       group: a.task.group,

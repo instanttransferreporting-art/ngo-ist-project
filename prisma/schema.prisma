@@ -39,13 +39,14 @@ enum SheetTemplate {
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
-  id            String   @id @default(cuid())
-  name          String
-  email         String   @unique
-  password      String
-  role          Role     @default(EMPLOYEE)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  name                  String
+  email                 String   @unique
+  password              String
+  role                  Role     @default(EMPLOYEE)
+  templatePreference    SheetTemplate?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   assignments   TaskAssignment[]
   dailyLogs     DailyTaskLog[]
@@ -118,6 +119,17 @@ model DayLockConfig {
   mode      LockMode @default(FREE)
   template  SheetTemplate @default(A)
   updatedAt DateTime @updatedAt
+}
+
+/// Singleton record (id = "global") — stores email configuration for cron jobs.
+model EmailConfig {
+  id               String   @id @default("global")
+  recipients       String[] @default([])
+  cc               String[] @default([])
+  reminderBody     String   @default("Il vous reste {pendingCount} tâche(s) à compléter pour aujourd'hui.")
+  reportBody       String   @default("Rapport journalier du {date}")
+  monthlyReportBody String @default("Rapport mensuel")
+  updatedAt        DateTime @updatedAt
 }
 
 /// Created once per (employee, month, year) the first time the sheet is opened.
