@@ -23,6 +23,18 @@ function addUtcDays(date: Date, days: number) {
   return d;
 }
 
+type EmailConfigShape = {
+  id: string;
+  recipients: string[];
+  reminderRecipients: string[];
+  dailyRecipients: string[];
+  monthlyRecipients: string[];
+  cc: string[];
+  reminderBody: string;
+  reportBody: string;
+  monthlyReportBody: string;
+};
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const isCronCall = auth === `Bearer ${process.env.CRON_SECRET}`;
@@ -90,7 +102,7 @@ export async function POST(req: NextRequest) {
   const monthEnd = isCurrentMonth ? todayDate : new Date(Date.UTC(year, month, 0));
   const monthLabel = formatMonthLabel(year, month);
 
-  const defaultEmailConfig = {
+  const defaultEmailConfig: EmailConfigShape = {
     id: "global",
     recipients: [],
     reminderRecipients: [],
@@ -102,7 +114,7 @@ export async function POST(req: NextRequest) {
     monthlyReportBody: "Rapport mensuel de {monthLabel}.",
   };
 
-  let emailConfig = defaultEmailConfig;
+  let emailConfig: EmailConfigShape = defaultEmailConfig;
   try {
     emailConfig = await prisma.emailConfig.upsert({
       where: { id: "global" },

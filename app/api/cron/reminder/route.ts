@@ -8,6 +8,18 @@ function renderTemplate(template: string, vars: Record<string, string | number>)
   return template.replace(/\{(\w+)\}/g, (_m, key: string) => String(vars[key] ?? ""));
 }
 
+type EmailConfigShape = {
+  id: string;
+  recipients: string[];
+  reminderRecipients: string[];
+  dailyRecipients: string[];
+  monthlyRecipients: string[];
+  cc: string[];
+  reminderBody: string;
+  reportBody: string;
+  monthlyReportBody: string;
+};
+
 /**
  * POST /api/cron/reminder
  * Triggered daily at 18:00 by Vercel Cron.
@@ -37,7 +49,7 @@ export async function POST(req: NextRequest) {
   const todayDate = new Date(Date.UTC(year, month - 1, day));
   const dateStr = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 
-  const defaultEmailConfig = {
+  const defaultEmailConfig: EmailConfigShape = {
     id: "global",
     recipients: [],
     reminderRecipients: [],
@@ -49,7 +61,7 @@ export async function POST(req: NextRequest) {
     monthlyReportBody: "Rapport mensuel de {monthLabel}.",
   };
 
-  let emailConfig = defaultEmailConfig;
+  let emailConfig: EmailConfigShape = defaultEmailConfig;
   try {
     emailConfig = await prisma.emailConfig.upsert({
       where: { id: "global" },

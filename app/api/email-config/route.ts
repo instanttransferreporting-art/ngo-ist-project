@@ -22,7 +22,19 @@ async function ensureAdmin() {
   return session;
 }
 
-const defaultEmailConfig = {
+type EmailConfigShape = {
+  id: string;
+  recipients: string[];
+  reminderRecipients: string[];
+  dailyRecipients: string[];
+  monthlyRecipients: string[];
+  cc: string[];
+  reminderBody: string;
+  reportBody: string;
+  monthlyReportBody: string;
+};
+
+const defaultEmailConfig: EmailConfigShape = {
   id: "global",
   recipients: [],
   reminderRecipients: [],
