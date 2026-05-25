@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { sendMonthlyReportEmail, MonthlyReportRow } from "@/lib/email";
+import { buildMonthlyExcel } from "@/lib/excel";
 import { calcMonthStats, formatMonthLabel, getWorkingDaysOfMonth, isOnLeave, toIsoDate } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -14,6 +15,12 @@ function previousMonthRef(now: Date) {
     return { month: 12, year: now.getFullYear() - 1 };
   }
   return { month: now.getMonth(), year: now.getFullYear() };
+}
+
+function addUtcDays(date: Date, days: number) {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
 }
 
 export async function POST(req: NextRequest) {
@@ -35,6 +42,7 @@ export async function POST(req: NextRequest) {
 
   const monthParam = req.nextUrl.searchParams.get("month") ?? String(payload.month ?? "");
   const yearParam = req.nextUrl.searchParams.get("year") ?? String(payload.year ?? "");
+  const isManualRun = Boolean(monthParam && yearParam);
 
   let month: number;
   let year: number;
@@ -45,13 +53,39 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Mois/année invalides" }, { status: 400 });
     }
   } else {
-    ({ month, year } = previousMonthRef(now));
+    // Automatic run strategy:
+    // - Send current month on the last day of month if it's not Sunday.
+    // - If month ends on Sunday, send previous month on Monday.
+    const todayStrAuto = format(now, "yyyy-MM-dd");
+    const [autoYear, autoMonth, autoDay] = todayStrAuto.split("-").map(Number);
+    const todayAuto = new Date(Date.UTC(autoYear, autoMonth - 1, autoDay));
+    const tomorrowAuto = addUtcDays(todayAuto, 1);
+    const yesterdayAuto = addUtcDays(todayAuto, -1);
+
+    const isLastDayOfMonth = tomorrowAuto.getUTCMonth() !== todayAuto.getUTCMonth();
+    const isSunday = todayAuto.getUTCDay() === 0;
+
+    const isMondayAfterSundayMonthEnd =
+      todayAuto.getUTCDay() === 1 &&
+      yesterdayAuto.getUTCDay() === 0 &&
+      todayAuto.getUTCMonth() !== yesterdayAuto.getUTCMonth();
+
+    if (isLastDayOfMonth && !isSunday) {
+      month = autoMonth;
+      year = autoYear;
+    } else if (isMondayAfterSundayMonthEnd) {
+      month = yesterdayAuto.getUTCMonth() + 1;
+      year = yesterdayAuto.getUTCFullYear();
+    } else {
+      return Response.json({ skipped: "Not monthly send window" });
+    }
   }
 
   const todayStr = format(now, "yyyy-MM-dd");
   const [todayYear, todayMonth, todayDay] = todayStr.split("-").map(Number);
   const todayDate = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay));
   const isCurrentMonth = month === todayMonth && year === todayYear;
+
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = isCurrentMonth ? todayDate : new Date(Date.UTC(year, month, 0));
   const monthLabel = formatMonthLabel(year, month);
@@ -157,6 +191,19 @@ export async function POST(req: NextRequest) {
     })
   );
 
+  const excelBuffer = buildMonthlyExcel(
+    rows.map((r) => ({
+      employé: r.name,
+      mois: monthLabel,
+      score20: r.score20,
+      pourcentage: r.percentTotal,
+      tachesFaites: r.totalDone,
+      tachesTotal: r.totalTasks,
+      joursConge: r.leaveDays,
+      joursOuvres: r.workingDays,
+    }))
+  );
+
   try {
     const body = renderTemplate(emailConfig.monthlyReportBody, {
       monthLabel,
@@ -169,6 +216,13 @@ export async function POST(req: NextRequest) {
       monthLabel,
       rows,
       body,
+      attachments: [
+        {
+          filename: `rapport-mensuel-${monthLabel.replace(/\s/g, "-").toLowerCase()}.xlsx`,
+          content: excelBuffer,
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
     });
 
     return Response.json({ ok: true, month, year, recipients: recipients.length });

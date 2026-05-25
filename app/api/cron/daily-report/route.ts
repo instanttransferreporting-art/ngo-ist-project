@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendDailyReportEmail, DailyReportRow } from "@/lib/email";
 import { getSession } from "@/lib/auth";
 import { isSunday, format } from "date-fns";
+import { buildDailyExcel } from "@/lib/excel";
 import { calcMonthStats, getWorkingDaysOfMonth, isOnLeave, toIsoDate } from "@/lib/utils";
 
 function renderTemplate(template: string, vars: Record<string, string | number>) {
@@ -160,6 +161,17 @@ export async function POST(req: NextRequest) {
     })
   );
 
+  const excelBuffer = buildDailyExcel(
+    rows.map((r) => ({
+      employé: r.name,
+      date: dateStr,
+      tachesFaites: r.done,
+      tachesTotal: r.total,
+      pourcentage: r.percent,
+      statut: r.status,
+    }))
+  );
+
   try {
     const avgPercent = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.percent, 0) / rows.length) : 0;
     const body = renderTemplate(emailConfig.reportBody, {
@@ -167,7 +179,20 @@ export async function POST(req: NextRequest) {
       usersCount: rows.length,
       avgPercent,
     });
-    await sendDailyReportEmail({ to: recipients, cc: emailConfig.cc, date: dateStr, rows, body });
+    await sendDailyReportEmail({
+      to: recipients,
+      cc: emailConfig.cc,
+      date: dateStr,
+      rows,
+      body,
+      attachments: [
+        {
+          filename: `rapport-journalier-${todayIso}.xlsx`,
+          content: excelBuffer,
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
+    });
     return Response.json({ ok: true, date: dateStr, recipients: recipients.length });
   } catch (err) {
     console.error("Failed to send daily report:", err);

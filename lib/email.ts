@@ -64,8 +64,13 @@ export async function sendDailyReportEmail(opts: {
   cc?: string[];
   body?: string;
   subject?: string;
+  attachments?: {
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }[];
 }) {
-  const { to, date, rows, cc, subject } = opts;
+  const { to, date, rows, cc, subject, attachments } = opts;
   const body = opts.body ?? `Rapport journalier du ${date}.`;
 
   const tableRows = rows
@@ -94,6 +99,7 @@ export async function sendDailyReportEmail(opts: {
     to,
     cc,
     subject: subject ?? `Evaluation journalière - ${date}`,
+    attachments,
 
     html: `
       <div style="font-family:Arial,sans-serif;max-width:700px;margin:auto">
@@ -135,8 +141,13 @@ export async function sendMonthlyReportEmail(opts: {
   rows: MonthlyReportRow[];
   body?: string;
   subject?: string;
+  attachments?: {
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }[];
 }) {
-  const { to, cc, monthLabel, rows, subject } = opts;
+  const { to, cc, monthLabel, rows, subject, attachments } = opts;
   const body = opts.body ?? `Rapport mensuel de ${monthLabel}.`;
 
   const tableRows = rows
@@ -158,6 +169,7 @@ export async function sendMonthlyReportEmail(opts: {
     to,
     cc,
     subject: subject ?? `Rapport mensuel - ${monthLabel}`,
+    attachments,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:780px;margin:auto">
         <h2 style="color:#1d4ed8">Rapport mensuel - ${monthLabel}</h2>
