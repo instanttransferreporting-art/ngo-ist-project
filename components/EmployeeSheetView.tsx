@@ -172,13 +172,19 @@ export function EmployeeSheetView({
 
   async function toggleTask(date: string, taskId: string, currentDone: boolean) {
     updateDoneState(date, taskId, !currentDone);
+    setError("");
     const res = await fetch("/api/daily-logs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, taskId, date, done: !currentDone, type: "PREDEFINED" }),
     });
-    if (res.ok) fetchSheet(true);
-    else fetchSheet(true);
+    if (res.ok) {
+      fetchSheet(true);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "Erreur lors de la sauvegarde");
+      updateDoneState(date, taskId, currentDone); // revert optimistic update
+    }
   }
 
   async function addExtraTask(date: string) {
@@ -208,13 +214,19 @@ export function EmployeeSheetView({
 
   async function toggleExtra(logId: string, currentDone: boolean) {
     updateExtraState(logId, !currentDone);
+    setError("");
     const res = await fetch(`/api/daily-logs/${logId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ done: !currentDone }),
     });
-    if (res.ok) fetchSheet(true);
-    else fetchSheet(true);
+    if (res.ok) {
+      fetchSheet(true);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "Erreur lors de la sauvegarde");
+      updateExtraState(logId, currentDone); // revert optimistic update
+    }
   }
 
   async function deleteExtra(logId: string) {

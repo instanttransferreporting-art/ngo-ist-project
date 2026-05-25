@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import { buildMonthlyExcel } from "@/lib/excel";
-import { format } from "date-fns";
 
 /** GET /api/export/monthly?month=5&year=2026 */
 export async function GET(req: NextRequest) {
@@ -18,6 +17,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
   const reportRes = await fetch(`${baseUrl}/api/reports/monthly?month=${month}&year=${year}`, {
     headers: { cookie: req.headers.get("cookie") ?? "" },
+    cache: "no-store",
   });
 
   if (!reportRes.ok) {

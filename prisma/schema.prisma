@@ -125,6 +125,9 @@ model DayLockConfig {
 model EmailConfig {
   id               String   @id @default("global")
   recipients       String[] @default([])
+  reminderRecipients String[] @default([])
+  dailyRecipients  String[] @default([])
+  monthlyRecipients String[] @default([])
   cc               String[] @default([])
   reminderBody     String   @default("Il vous reste {pendingCount} tâche(s) à compléter pour aujourd'hui.")
   reportBody       String   @default("Rapport journalier du {date}")

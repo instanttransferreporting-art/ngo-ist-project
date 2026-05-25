@@ -28,10 +28,10 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let where: Record<string, unknown> = { userId };
+  const where: Record<string, unknown> = { userId };
 
   if (dateStr) {
-    where.date = new Date(dateStr);
+    where.date = parseISO(dateStr);
   } else if (month && year) {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0);
@@ -70,24 +70,38 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Aucune action le dimanche" }, { status: 400 });
   }
 
-  const dateObj = new Date(date);
+  // Parse date as UTC midnight to avoid local-timezone shifts (e.g. UTC+1 would shift to previous day)
+  const [yy, mm, dd] = date.split("-").map(Number);
+  const dateObj = new Date(Date.UTC(yy, mm - 1, dd));
 
-  if (type === "PREDEFINED" && taskId) {
-    // Upsert predefined log
-    const log = await prisma.dailyTaskLog.upsert({
-      where: { userId_taskId_date: { userId, taskId, date: dateObj } },
-      create: { userId, taskId, date: dateObj, done, type: "PREDEFINED" },
-      update: { done },
-    });
-    return Response.json(log);
-  } else {
-    // Create extra task log (always done when created)
-    if (!extraLabel) {
-      return Response.json({ error: "Le libellé est requis pour une tâche extra" }, { status: 400 });
+  try {
+    if (type === "PREDEFINED" && taskId) {
+      // Use findFirst + update/create instead of upsert to avoid @db.Date compound-key lookup issues
+      const existing = await prisma.dailyTaskLog.findFirst({
+        where: { userId, taskId, date: dateObj },
+      });
+      let log;
+      if (existing) {
+        log = await prisma.dailyTaskLog.update({ where: { id: existing.id }, data: { done } });
+      } else {
+        log = await prisma.dailyTaskLog.create({
+          data: { userId, taskId, date: dateObj, done, type: "PREDEFINED" },
+        });
+      }
+      return Response.json(log);
+    } else {
+      // Create extra task log (always done when created)
+      if (!extraLabel) {
+        return Response.json({ error: "Le libellé est requis pour une tâche extra" }, { status: 400 });
+      }
+      const log = await prisma.dailyTaskLog.create({
+        data: { userId, date: dateObj, done: true, type: "EXTRA", extraLabel },
+      });
+      return Response.json(log, { status: 201 });
     }
-    const log = await prisma.dailyTaskLog.create({
-      data: { userId, date: dateObj, done: true, type: "EXTRA", extraLabel },
-    });
-    return Response.json(log, { status: 201 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[daily-logs POST] Prisma error:", message);
+    return Response.json({ error: "Impossible de sauvegarder la tâche", details: message }, { status: 500 });
   }
 }

@@ -53,6 +53,7 @@ export interface DailyReportRow {
   done: number;
   total: number;
   percent: number;
+  monthScore20: number;
   status: "Présent" | "En congé";
 }
 
@@ -82,6 +83,7 @@ export async function sendDailyReportEmail(opts: {
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${r.name}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.done}/${r.total}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:${color}"><strong>${r.status === "En congé" ? "Congé" : r.percent + "%"}</strong></td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.status === "En congé" ? "—" : r.monthScore20 + "/20"}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${r.status}</td>
         </tr>`;
     })
@@ -91,11 +93,11 @@ export async function sendDailyReportEmail(opts: {
     from: FROM,
     to,
     cc,
-    subject: subject ?? `Rapport journalier - ${date}`,
+    subject: subject ?? `Evaluation journalière - ${date}`,
 
     html: `
       <div style="font-family:Arial,sans-serif;max-width:700px;margin:auto">
-        <h2 style="color:#1d4ed8">Rapport journalier - ${date}</h2>
+        <h2 style="color:#1d4ed8">Evaluation journalière du ${date}</h2>
         <p>${nl2br(body)}</p>
         <table style="width:100%;border-collapse:collapse;margin-top:16px">
           <thead>
@@ -103,6 +105,7 @@ export async function sendDailyReportEmail(opts: {
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb">Employé</th>
               <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">Tâches</th>
               <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">%</th>
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">Score mois /20</th>
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb">Statut</th>
             </tr>
           </thead>

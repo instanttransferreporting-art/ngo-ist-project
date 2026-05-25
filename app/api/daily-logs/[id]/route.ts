@@ -28,8 +28,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const log = await prisma.dailyTaskLog.update({ where: { id }, data: parsed.data });
-  return Response.json(log);
+  try {
+    const log = await prisma.dailyTaskLog.update({ where: { id }, data: parsed.data });
+    return Response.json(log);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[daily-logs PUT] Prisma error:", message);
+    return Response.json({ error: "Impossible de mettre à jour la tâche", details: message }, { status: 500 });
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {

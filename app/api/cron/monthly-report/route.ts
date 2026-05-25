@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { sendMonthlyReportEmail, MonthlyReportRow } from "@/lib/email";
 import { calcMonthStats, formatMonthLabel, getWorkingDaysOfMonth, isOnLeave, toIsoDate } from "@/lib/utils";
+import { format } from "date-fns";
 
 function renderTemplate(template: string, vars: Record<string, string | number>) {
   return template.replace(/\{(\w+)\}/g, (_m, key: string) => String(vars[key] ?? ""));
@@ -29,28 +30,63 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const payload = await req.json().catch(() => ({} as Record<string, unknown>));
   const now = new Date();
-  const { month, year } = previousMonthRef(now);
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
+
+  const monthParam = req.nextUrl.searchParams.get("month") ?? String(payload.month ?? "");
+  const yearParam = req.nextUrl.searchParams.get("year") ?? String(payload.year ?? "");
+
+  let month: number;
+  let year: number;
+  if (monthParam && yearParam) {
+    month = Number(monthParam);
+    year = Number(yearParam);
+    if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year) || year < 2000 || year > 2100) {
+      return Response.json({ error: "Mois/année invalides" }, { status: 400 });
+    }
+  } else {
+    ({ month, year } = previousMonthRef(now));
+  }
+
+  const todayStr = format(now, "yyyy-MM-dd");
+  const [todayYear, todayMonth, todayDay] = todayStr.split("-").map(Number);
+  const todayDate = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay));
+  const isCurrentMonth = month === todayMonth && year === todayYear;
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = isCurrentMonth ? todayDate : new Date(Date.UTC(year, month, 0));
   const monthLabel = formatMonthLabel(year, month);
 
-  const emailConfig = await prisma.emailConfig.upsert({
-    where: { id: "global" },
-    update: {},
-    create: {
-      id: "global",
-      recipients: [],
-      cc: [],
-      reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
-      reportBody: "Rapport journalier du {date}.",
-      monthlyReportBody: "Rapport mensuel de {monthLabel}.",
-    },
-  });
+  const defaultEmailConfig = {
+    id: "global",
+    recipients: [],
+    reminderRecipients: [],
+    dailyRecipients: [],
+    monthlyRecipients: [],
+    cc: [],
+    reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
+    reportBody: "Rapport journalier du {date}.",
+    monthlyReportBody: "Rapport mensuel de {monthLabel}.",
+  };
+
+  let emailConfig = defaultEmailConfig;
+  try {
+    emailConfig = await prisma.emailConfig.upsert({
+      where: { id: "global" },
+      update: {},
+      create: defaultEmailConfig,
+    });
+  } catch {
+    // Keep default values when DB schema is behind code.
+  }
 
   const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
   const fallbackAdminEmails = admins.map((a) => a.email);
-  const recipients = emailConfig.recipients.length > 0 ? emailConfig.recipients : fallbackAdminEmails;
+  const recipients =
+    emailConfig.monthlyRecipients.length > 0
+      ? emailConfig.monthlyRecipients
+      : emailConfig.recipients.length > 0
+      ? emailConfig.recipients
+      : fallbackAdminEmails;
 
   if (recipients.length === 0) {
     return Response.json({ ok: false, error: "No recipients found" }, { status: 400 });
@@ -63,6 +99,9 @@ export async function POST(req: NextRequest) {
   });
 
   const workingDays = getWorkingDaysOfMonth(year, month);
+  const workingDaysInScope = isCurrentMonth
+    ? workingDays.filter((d) => toIsoDate(d) <= todayStr)
+    : workingDays;
 
   const rows: MonthlyReportRow[] = await Promise.all(
     employees.map(async (emp) => {
@@ -84,7 +123,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      const dayStats = workingDays.map((day) => {
+      const dayStats = workingDaysInScope.map((day) => {
         const dayStr = toIsoDate(day);
         const isLeaveDay = isOnLeave(day, leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate })));
         const dayLogs = logs.filter((l) => toIsoDate(new Date(l.date)) === dayStr);

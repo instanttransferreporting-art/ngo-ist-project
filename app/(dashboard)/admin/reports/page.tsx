@@ -10,6 +10,7 @@ interface DailyRow {
   done: number;
   total: number;
   percent: number;
+  monthScore20: number;
   status: string;
   isLeave: boolean;
 }
@@ -45,14 +46,14 @@ export default function ReportsPage() {
 
   async function fetchDailyReport() {
     setLoading(true);
-    const res = await fetch(`/api/reports/daily?date=${dailyDate}`);
+    const res = await fetch(`/api/reports/daily?date=${dailyDate}`, { cache: "no-store" });
     if (res.ok) setDailyData(await res.json());
     setLoading(false);
   }
 
   async function fetchMonthlyReport() {
     setLoading(true);
-    const res = await fetch(`/api/reports/monthly?month=${reportMonth}&year=${reportYear}`);
+    const res = await fetch(`/api/reports/monthly?month=${reportMonth}&year=${reportYear}`, { cache: "no-store" });
     if (res.ok) setMonthlyData(await res.json());
     setLoading(false);
   }
@@ -109,6 +110,7 @@ export default function ReportsPage() {
                       <th className="text-left px-6 py-3 font-medium">Employé</th>
                       <th className="text-center px-4 py-3 font-medium">Tâches</th>
                       <th className="text-center px-4 py-3 font-medium">%</th>
+                      <th className="text-center px-4 py-3 font-medium">Score mois /20</th>
                       <th className="text-center px-4 py-3 font-medium">Statut</th>
                     </tr>
                   </thead>
@@ -129,6 +131,9 @@ export default function ReportsPage() {
                                 {row.percent}%
                               </span>
                             )}
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-600">
+                            {row.isLeave ? "—" : `${row.monthScore20}/20`}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${row.isLeave ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>

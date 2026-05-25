@@ -2,15 +2,15 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getWorkingDaysOfMonth, isOnLeave, toIsoDate, calcMonthStats, formatMonthLabel, getScoreColor, capitalizeFirst } from "@/lib/utils";
-import { isSunday, format } from "date-fns";
+import { isSunday, format, parseISO } from "date-fns";
 import Link from "next/link";
 
 async function getDashboardData() {
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
-  const todayStr = format(now, "yyyy-MM-dd");
-  const today = new Date(todayStr);
+  const todayStr = format(now, "yyyy-MM-dd"); // local calendar date
+  const today = new Date(todayStr + "T00:00:00.000Z"); // UTC midnight for DB queries
   const todayIsSunday = isSunday(now);
 
   const employees = await prisma.user.findMany({
@@ -19,9 +19,9 @@ async function getDashboardData() {
     orderBy: { name: "asc" },
   });
 
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-  const workingDays = getWorkingDaysOfMonth(year, month);
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0));
+  const workingDays = getWorkingDaysOfMonth(year, month).filter((d) => toIsoDate(d) <= todayStr);
 
   const employeeStats = await Promise.all(
     employees.map(async (emp) => {
@@ -39,10 +39,16 @@ async function getDashboardData() {
 
       // Today's status
       const todayOnLeave = !todayIsSunday && isOnLeave(today, approvedLeaves);
-      const todayDone = logs.filter(
+      const todayDonePredefined = logs.filter(
         (l) => toIsoDate(new Date(l.date)) === todayStr && l.done && l.type === "PREDEFINED"
       ).length;
-      const todayPercent = assignments > 0 ? Math.round((todayDone / assignments) * 100) : 0;
+      const todayExtraLogs = logs.filter(
+        (l) => toIsoDate(new Date(l.date)) === todayStr && l.type === "EXTRA"
+      );
+      const todayDoneExtra = todayExtraLogs.filter((l) => l.done).length;
+      const todayTotal = assignments + todayExtraLogs.length;
+      const todayDone = todayDonePredefined + todayDoneExtra;
+      const todayPercent = todayTotal > 0 ? Math.round((todayDone / todayTotal) * 100) : 0;
 
       // Monthly stats
       const dayStats = workingDays.map((day) => {
@@ -65,7 +71,7 @@ async function getDashboardData() {
         ...emp,
         todayOnLeave,
         todayDone,
-        todayTotal: assignments,
+        todayTotal,
         todayPercent: todayIsSunday ? null : todayPercent,
         monthly,
       };
@@ -74,13 +80,6 @@ async function getDashboardData() {
 
   return { employeeStats, month, year, todayStr, todayIsSunday };
 }
-
-const colorMap = {
-  red: "bg-red-50 border-red-200 text-red-700",
-  yellow: "bg-yellow-50 border-yellow-200 text-yellow-700",
-  green: "bg-green-50 border-green-200 text-green-700",
-  gray: "bg-slate-50 border-slate-200 text-slate-500",
-};
 
 const badgeMap = {
   red: "bg-red-100 text-red-700",
@@ -150,7 +149,9 @@ export default async function AdminDashboard() {
                   <th className="text-left px-6 py-3 font-medium">Employé</th>
                   <th className="text-center px-4 py-3 font-medium">Aujourd&apos;hui</th>
                   <th className="text-center px-4 py-3 font-medium">% Jour</th>
-                  <th className="text-center px-4 py-3 font-medium">Score mois /20</th>
+                  <th className="text-center px-4 py-3 font-medium">Tâches mois</th>
+                  <th className="text-center px-4 py-3 font-medium">% Mois</th>
+                  <th className="text-center px-4 py-3 font-medium">Score /20</th>
                   <th className="text-center px-4 py-3 font-medium">Statut</th>
                   <th className="text-right px-6 py-3 font-medium">Action</th>
                 </tr>
@@ -175,6 +176,15 @@ export default async function AdminDashboard() {
                             {emp.todayPercent}%
                           </span>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-center text-slate-600 text-xs whitespace-nowrap">
+                        {emp.monthly.totalDone} / {emp.monthly.totalTasks}
+                        {emp.monthly.leaveDays > 0 && <span className="text-slate-400 ml-1">({emp.monthly.leaveDays}j.c)</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${badgeMap[getScoreColor(emp.monthly.percentTotal)]}`}>
+                          {emp.monthly.percentTotal.toFixed(1)}%
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${badgeMap[getScoreColor(emp.monthly.percentTotal)]}`}>

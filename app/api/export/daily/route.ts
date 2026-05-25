@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
   const reportRes = await fetch(`${baseUrl}/api/reports/daily?date=${dateStr}`, {
     headers: { cookie: req.headers.get("cookie") ?? "" },
+    cache: "no-store",
   });
 
   if (!reportRes.ok) {

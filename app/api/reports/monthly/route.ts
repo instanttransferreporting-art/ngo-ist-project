@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getWorkingDaysOfMonth, isOnLeave, calcMonthStats, toIsoDate, formatMonthLabel } from "@/lib/utils";
-import { isSunday } from "date-fns";
+import { format } from "date-fns";
 
 /**
  * GET /api/reports/monthly?month=5&year=2026
@@ -26,8 +26,13 @@ export async function GET(req: NextRequest) {
     : [{ id: session.userId, name: session.name, email: session.email }];
 
   const workingDays = getWorkingDaysOfMonth(year, month);
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const [todayYear, todayMonth, todayDay] = todayStr.split("-").map(Number);
+  const today = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay));
+  const isCurrentMonth = todayYear === year && todayMonth === month;
+  const workingDaysInScope = isCurrentMonth ? workingDays.filter((d) => toIsoDate(d) <= todayStr) : workingDays;
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = isCurrentMonth ? today : new Date(Date.UTC(year, month, 0));
 
   const result = await Promise.all(
     users.map(async (user) => {
@@ -52,7 +57,7 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      const dayStats = workingDays.map((day) => {
+      const dayStats = workingDaysInScope.map((day) => {
         const dayStr = toIsoDate(day);
         const isLeaveDay = isOnLeave(day, leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate })));
         const dayLogs = logs.filter((l) => toIsoDate(new Date(l.date)) === dayStr);
@@ -68,7 +73,7 @@ export async function GET(req: NextRequest) {
           totalExtra: extraLogs.length,
           doneExtra,
           isLeave: isLeaveDay,
-          isSundayDay: isSunday(day),
+          isSundayDay: false,
         };
       });
 

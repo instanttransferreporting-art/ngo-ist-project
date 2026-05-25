@@ -135,6 +135,7 @@ export default function TasksPage() {
   async function handleImport(e: React.FormEvent) {
     e.preventDefault();
     if (!importFile) return;
+
     setImporting(true);
     setError("");
     setSuccess("");
@@ -144,16 +145,46 @@ export default function TasksPage() {
     if (importUserId) fd.append("userId", importUserId);
     if (importAssign) fd.append("assign", "true");
 
-    const res = await fetch("/api/import/tasks", { method: "POST", body: fd });
-    const data = await res.json();
+    try {
+      const res = await fetch("/api/import/tasks", { 
+        method: "POST", 
+        body: fd 
+      });
 
-    if (!res.ok) { setError(data.error ?? "Erreur"); setImporting(false); return; }
+      // 1. Vérification si la réponse est correcte (status 200-299)
+      if (!res.ok) {
+        // Si ce n'est pas OK, on récupère le texte brut pour diagnostiquer
+        const errorText = await res.text();
+        console.error("Détails de l'erreur serveur :", errorText);
+        
+        // On essaie de voir si le serveur a envoyé un message d'erreur en JSON quand même
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.error || `Erreur serveur (${res.status})`);
+        } catch {
+          throw new Error(`Le serveur a répondu avec une erreur ${res.status}.`);
+        }
+      }
 
-    setSuccess(`${data.imported} tâche(s) importée(s)${data.assigned ? `, ${data.assigned} assignée(s)` : ""}`);
-    fetchTasks();
-    setImportFile(null);
-    if (fileRef.current) fileRef.current.value = "";
+      // 2. Lecture sécurisée du JSON
+      const data = await res.json();
+
+      // 3. Mise à jour de l'interface en cas de succès
+      setSuccess(
+        `${data.imported} tâche(s) importée(s)${
+          data.assigned ? `, ${data.assigned} assignée(s)` : ""
+        }`
+      );
+      fetchTasks();
+      setImportFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+      
+    } catch (err: any) {
+      console.error("Erreur lors de l'importation :", err);
+      setError(err.message || "Une erreur réseau ou serveur est survenue.");
+    } finally {
     setImporting(false);
+    }
   }
 
   const groups: Record<string, Task[]> = {};

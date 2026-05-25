@@ -5,6 +5,9 @@ import { getSession } from "@/lib/auth";
 
 const updateSchema = z.object({
   recipients: z.array(z.string().email()).default([]),
+  reminderRecipients: z.array(z.string().email()).default([]),
+  dailyRecipients: z.array(z.string().email()).default([]),
+  monthlyRecipients: z.array(z.string().email()).default([]),
   cc: z.array(z.string().email()).default([]),
   reminderBody: z.string().min(1),
   reportBody: z.string().min(1),
@@ -22,6 +25,9 @@ async function ensureAdmin() {
 const defaultEmailConfig = {
   id: "global",
   recipients: [],
+  reminderRecipients: [],
+  dailyRecipients: [],
+  monthlyRecipients: [],
   cc: [],
   reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
   reportBody: "Rapport journalier du {date}.",
@@ -53,7 +59,23 @@ export async function GET() {
       create: defaultEmailConfig,
     });
 
-    return Response.json(config);
+    const normalized = {
+      ...config,
+      reminderRecipients:
+        "reminderRecipients" in config && Array.isArray(config.reminderRecipients)
+          ? config.reminderRecipients
+          : config.recipients,
+      dailyRecipients:
+        "dailyRecipients" in config && Array.isArray(config.dailyRecipients)
+          ? config.dailyRecipients
+          : config.recipients,
+      monthlyRecipients:
+        "monthlyRecipients" in config && Array.isArray(config.monthlyRecipients)
+          ? config.monthlyRecipients
+          : config.recipients,
+    };
+
+    return Response.json(normalized);
   } catch (err) {
     if (isEmailConfigSchemaError(err)) {
       return Response.json(
@@ -80,10 +102,17 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
+    const payload = {
+      ...parsed.data,
+      reminderRecipients: parsed.data.reminderRecipients,
+      dailyRecipients: parsed.data.dailyRecipients,
+      monthlyRecipients: parsed.data.monthlyRecipients,
+    };
+
     const config = await prisma.emailConfig.upsert({
       where: { id: "global" },
-      update: parsed.data,
-      create: { id: "global", ...parsed.data },
+      update: payload,
+      create: { id: "global", ...payload },
     });
 
     return Response.json(config);

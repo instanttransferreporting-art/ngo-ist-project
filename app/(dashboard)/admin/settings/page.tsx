@@ -27,6 +27,7 @@ const modes: { value: LockMode; label: string; desc: string; icon: string }[] = 
 ];
 
 export default function SettingsPage() {
+  const now = new Date();
   const [mode, setMode] = useState<LockMode>("FREE");
   const [template, setTemplate] = useState<SheetTemplate>("A");
   const [templateSupported, setTemplateSupported] = useState(true);
@@ -35,7 +36,9 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
-  const [emailRecipientsText, setEmailRecipientsText] = useState("");
+  const [reminderRecipientsText, setReminderRecipientsText] = useState("");
+  const [dailyRecipientsText, setDailyRecipientsText] = useState("");
+  const [monthlyRecipientsText, setMonthlyRecipientsText] = useState("");
   const [emailCcText, setEmailCcText] = useState("");
   const [reminderBody, setReminderBody] = useState("Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.");
   const [reportBody, setReportBody] = useState("Rapport journalier du {date}.");
@@ -45,6 +48,8 @@ export default function SettingsPage() {
   const [emailError, setEmailError] = useState("");
   const [cronLoading, setCronLoading] = useState<"reminder" | "daily" | "monthly" | null>(null);
   const [cronResult, setCronResult] = useState<string>("");
+  const [manualMonthlyMonth, setManualMonthlyMonth] = useState(now.getMonth() + 1);
+  const [manualMonthlyYear, setManualMonthlyYear] = useState(now.getFullYear());
 
   useEffect(() => {
     Promise.all([fetch("/api/lock"), fetch("/api/email-config")])
@@ -60,7 +65,9 @@ export default function SettingsPage() {
 
         if (emailRes.ok) {
           const email = await emailRes.json();
-          setEmailRecipientsText((email.recipients ?? []).join("\n"));
+          setReminderRecipientsText((email.reminderRecipients ?? email.recipients ?? []).join("\n"));
+          setDailyRecipientsText((email.dailyRecipients ?? email.recipients ?? []).join("\n"));
+          setMonthlyRecipientsText((email.monthlyRecipients ?? email.recipients ?? []).join("\n"));
           setEmailCcText((email.cc ?? []).join("\n"));
           setReminderBody(email.reminderBody ?? "");
           setReportBody(email.reportBody ?? "");
@@ -113,7 +120,11 @@ export default function SettingsPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recipients: parseEmails(emailRecipientsText),
+          // legacy fallback recipients keeps backward compatibility for old cron logic
+          recipients: parseEmails(dailyRecipientsText),
+          reminderRecipients: parseEmails(reminderRecipientsText),
+          dailyRecipients: parseEmails(dailyRecipientsText),
+          monthlyRecipients: parseEmails(monthlyRecipientsText),
           cc: parseEmails(emailCcText),
           reminderBody,
           reportBody,
@@ -136,7 +147,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function triggerCron(kind: "reminder" | "daily" | "monthly") {
+  async function triggerCron(kind: "reminder" | "daily" | "monthly", payload?: Record<string, unknown>) {
     const pathMap = {
       reminder: "/api/cron/reminder",
       daily: "/api/cron/daily-report",
@@ -146,7 +157,12 @@ export default function SettingsPage() {
     setCronLoading(kind);
     setCronResult("");
     try {
-      const res = await fetch(pathMap[kind], { method: "POST", credentials: "include" });
+      const res = await fetch(pathMap[kind], {
+        method: "POST",
+        credentials: "include",
+        headers: payload ? { "Content-Type": "application/json" } : undefined,
+        body: payload ? JSON.stringify(payload) : undefined,
+      });
       const body = await res.json().catch(() => ({}));
       setCronResult(JSON.stringify({ status: res.status, ...body }, null, 2));
     } catch (e) {
@@ -279,12 +295,32 @@ export default function SettingsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Destinataires rapport (un par ligne)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Destinataires reminder 18h (un par ligne)</label>
             <textarea
-              value={emailRecipientsText}
-              onChange={(e) => setEmailRecipientsText(e.target.value)}
+              value={reminderRecipientsText}
+              onChange={(e) => setReminderRecipientsText(e.target.value)}
+              rows={5}
+              placeholder="superviseur@example.com"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Destinataires rapport journalier 22h (un par ligne)</label>
+            <textarea
+              value={dailyRecipientsText}
+              onChange={(e) => setDailyRecipientsText(e.target.value)}
               rows={5}
               placeholder="admin@example.com"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Destinataires rapport mensuel (un par ligne)</label>
+            <textarea
+              value={monthlyRecipientsText}
+              onChange={(e) => setMonthlyRecipientsText(e.target.value)}
+              rows={5}
+              placeholder="direction@example.com"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
@@ -366,12 +402,32 @@ export default function SettingsPage() {
           </button>
 
           <button
-            onClick={() => triggerCron("monthly")}
+            onClick={() => triggerCron("monthly", { month: manualMonthlyMonth, year: manualMonthlyYear })}
             disabled={cronLoading !== null}
             className="px-4 py-2.5 bg-amber-700 hover:bg-amber-800 disabled:opacity-60 text-white rounded-lg text-sm font-medium"
           >
             {cronLoading === "monthly" ? "Envoi..." : "Envoyer monthly report"}
           </button>
+
+          <select
+            value={manualMonthlyMonth}
+            onChange={(e) => setManualMonthlyMonth(parseInt(e.target.value, 10))}
+            className="px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+          >
+            {Array.from({ length: 12 }, (_, i) => (
+              <option key={i + 1} value={i + 1}>
+                {new Date(2024, i).toLocaleString("fr-FR", { month: "long" })}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={manualMonthlyYear}
+            onChange={(e) => setManualMonthlyYear(parseInt(e.target.value, 10) || now.getFullYear())}
+            min="2020"
+            max="2099"
+            className="w-24 px-3 py-2.5 border border-slate-300 rounded-lg text-sm"
+          />
         </div>
 
         {cronResult && (

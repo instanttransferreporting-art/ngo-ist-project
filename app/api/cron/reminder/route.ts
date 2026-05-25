@@ -27,26 +27,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const today = new Date();
-  if (isSunday(today)) {
+  const now = new Date();
+  if (isSunday(now)) {
     return Response.json({ skipped: "Sunday" });
   }
 
-  const todayDate = new Date(format(today, "yyyy-MM-dd"));
-  const dateStr = format(today, "dd/MM/yyyy");
+  const todayIso = format(now, "yyyy-MM-dd");
+  const [year, month, day] = todayIso.split("-").map(Number);
+  const todayDate = new Date(Date.UTC(year, month - 1, day));
+  const dateStr = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 
-  const emailConfig = await prisma.emailConfig.upsert({
-    where: { id: "global" },
-    update: {},
-    create: {
-      id: "global",
-      recipients: [],
-      cc: [],
-      reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
-      reportBody: "Rapport journalier du {date}.",
-      monthlyReportBody: "Rapport mensuel de {monthLabel}.",
-    },
-  });
+  const defaultEmailConfig = {
+    id: "global",
+    recipients: [],
+    reminderRecipients: [],
+    dailyRecipients: [],
+    monthlyRecipients: [],
+    cc: [],
+    reminderBody: "Bonjour {name}, il vous reste {pendingCount} tache(s) a completer pour {date}.",
+    reportBody: "Rapport journalier du {date}.",
+    monthlyReportBody: "Rapport mensuel de {monthLabel}.",
+  };
+
+  let emailConfig = defaultEmailConfig;
+  try {
+    emailConfig = await prisma.emailConfig.upsert({
+      where: { id: "global" },
+      update: {},
+      create: defaultEmailConfig,
+    });
+  } catch {
+    // Keep default values when DB schema is behind code.
+  }
 
   const employees = await prisma.user.findMany({ where: { role: "EMPLOYEE" } });
   let sent = 0;
@@ -85,7 +97,7 @@ export async function POST(req: NextRequest) {
         name: emp.name,
         date: dateStr,
         pendingCount: pending,
-        cc: emailConfig.cc,
+        cc: Array.from(new Set([...emailConfig.cc, ...emailConfig.reminderRecipients])),
         body,
       });
       sent++;
