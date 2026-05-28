@@ -11,11 +11,11 @@ function renderTemplate(template: string, vars: Record<string, string | number>)
 }
 
 /**
- * POST /api/cron/daily-report
- * Triggered daily at 22:00 by Vercel Cron.
+ * GET /api/cron/daily-report  — called by Vercel Cron (GET)
+ * POST /api/cron/daily-report — manual trigger from admin UI
  * Sends a summary report to all admins.
  */
-export async function POST(req: NextRequest) {
+async function handler(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const isCronCall = auth === `Bearer ${process.env.CRON_SECRET}`;
   const origin = req.headers.get("origin") ?? "";
@@ -199,3 +199,5 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
+
+export { handler as GET, handler as POST };

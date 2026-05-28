@@ -21,11 +21,11 @@ type EmailConfigShape = {
 };
 
 /**
- * POST /api/cron/reminder
- * Triggered daily at 18:00 by Vercel Cron.
+ * GET /api/cron/reminder  — called by Vercel Cron (GET)
+ * POST /api/cron/reminder — manual trigger from admin UI
  * Sends a reminder email to every employee who hasn't completed all tasks today.
  */
-export async function POST(req: NextRequest) {
+async function handler(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const isCronCall = auth === `Bearer ${process.env.CRON_SECRET}`;
   const origin = req.headers.get("origin") ?? "";
@@ -120,3 +120,5 @@ export async function POST(req: NextRequest) {
 
   return Response.json({ ok: true, date: dateStr, sent, skipped });
 }
+
+export { handler as GET, handler as POST };

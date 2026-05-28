@@ -49,6 +49,7 @@ interface SheetData {
   userId: string;
   month: number;
   year: number;
+  isFuturePlan?: boolean;
   minMonth: number;
   minYear: number;
   maxMonth: number;
@@ -113,6 +114,10 @@ export function EmployeeSheetView({
     setCollapsedWeeks({});
     setCollapsedDays({});
   }, [month, year, userId]);
+
+  useEffect(() => {
+    if (data?.isFuturePlan) setActiveTab("tasklist");
+  }, [data?.isFuturePlan]);
 
   async function saveTemplate(nextTemplate: "A" | "B") {
     if (!isAdmin || !data) return;
@@ -470,6 +475,18 @@ export function EmployeeSheetView({
 
       {error && (
         <div className="mb-3 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>
+      )}
+
+      {data.isFuturePlan && (
+        <div className="mb-4 flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-sm px-4 py-3 rounded-lg">
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+          </svg>
+          <span>
+            <strong>Planification — mois à venir.</strong> Les tâches affichées correspondent au plan configuré dans l&apos;onglet Tâches. Gérez le plan depuis{" "}
+            <a href="/admin/tasks" className="underline font-medium">Tâches → Assigner aux employés</a>.
+          </span>
+        </div>
       )}
 
       {/* Tabs */}

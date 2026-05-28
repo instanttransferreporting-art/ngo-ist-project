@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/reminder", "schedule": "0 18 * * 1-6" },
     { "path": "/api/cron/daily-report", "schedule": "0 22 * * 1-6" },
-    { "path": "/api/cron/monthly-report", "schedule": "0 23 * * *" }
+    { "path": "/api/cron/monthly-report", "schedule": "0 23 * * *" },
+    { "path": "/api/cron/apply-plans", "schedule": "5 0 1 * *" }
   ]
 }

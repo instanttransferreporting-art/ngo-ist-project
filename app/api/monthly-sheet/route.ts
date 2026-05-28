@@ -52,7 +52,11 @@ export async function GET(req: NextRequest) {
   }
 
   const minDate = new Date(userRecord.createdAt.getFullYear(), userRecord.createdAt.getMonth(), 1);
-  const maxDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Admins can view up to one month ahead for future planning
+  const isAdminViewer = session.role === "ADMIN";
+  const maxDate = isAdminViewer
+    ? new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
 
   if (targetMonthDate < minDate || targetMonthDate > maxDate) {
     return Response.json(
@@ -72,37 +76,71 @@ export async function GET(req: NextRequest) {
   const todayDateStr = format(now, "yyyy-MM-dd"); // local YYYY-MM-DD
   const today = new Date(todayDateStr + "T00:00:00.000Z"); // UTC midnight
   const isCurrentMonth = today.getUTCFullYear() === year && today.getUTCMonth() + 1 === month;
-  // Admins see the full month layout; employees only see days up to today.
-  const isAdminViewer = session.role === "ADMIN";
+  const isFutureMonth = targetMonthDate > new Date(now.getFullYear(), now.getMonth(), 1);
   // UTC midnight boundaries for correct @db.Date range queries
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = isCurrentMonth && !isAdminViewer ? today : new Date(Date.UTC(year, month, 0));
 
-  // Ensure monthly sheet record exists
-  await prisma.monthlySheet.upsert({
-    where: { userId_month_year: { userId, month, year } },
-    create: { userId, month, year },
-    update: {},
-  });
+  // Only create MonthlySheet record for current/past months (not future planning views)
+  if (!isFutureMonth) {
+    await prisma.monthlySheet.upsert({
+      where: { userId_month_year: { userId, month, year } },
+      create: { userId, month, year },
+      update: {},
+    });
+  }
 
-  const [assignments, logs, leaves, lockConfig] = await Promise.all([
-    prisma.taskAssignment.findMany({
+  // Determine which assignments to show:
+  // - Future month: check for a plan; use plan tasks if useCurrentTasks=false
+  // - Current/past: use standard TaskAssignment
+  let assignments: Array<{ taskId: string; task: { group: string; title: string; deadline: string | null } }>;
+
+  if (isFutureMonth && isAdminViewer) {
+    const plan = await prisma.monthlyAssignmentPlan.findUnique({
+      where: { userId_month_year: { userId, month, year } },
+      include: {
+        tasks: {
+          include: { task: true },
+          orderBy: [{ task: { group: "asc" } }, { order: "asc" }],
+        },
+      },
+    });
+
+    if (plan && !plan.useCurrentTasks) {
+      assignments = plan.tasks.map((pt) => ({ taskId: pt.taskId, task: pt.task }));
+    } else {
+      // useCurrentTasks=true or no plan → use current TaskAssignment
+      assignments = await prisma.taskAssignment.findMany({
+        where: { userId },
+        include: { task: true },
+        orderBy: [{ task: { group: "asc" } }, { order: "asc" }],
+      });
+    }
+  } else {
+    assignments = await prisma.taskAssignment.findMany({
       where: { userId },
       include: { task: true },
       orderBy: [{ task: { group: "asc" } }, { order: "asc" }],
-    }),
-    prisma.dailyTaskLog.findMany({
-      where: { userId, date: { gte: monthStart, lte: monthEnd } },
-      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-    }),
-    prisma.leaveRequest.findMany({
-      where: {
-        userId,
-        status: "APPROVED",
-        startDate: { lte: monthEnd },
-        endDate: { gte: monthStart },
-      },
-    }),
+    });
+  }
+
+  const [logs, leaves, lockConfig] = await Promise.all([
+    isFutureMonth
+      ? Promise.resolve([])
+      : prisma.dailyTaskLog.findMany({
+          where: { userId, date: { gte: monthStart, lte: monthEnd } },
+          orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+        }),
+    isFutureMonth
+      ? Promise.resolve([])
+      : prisma.leaveRequest.findMany({
+          where: {
+            userId,
+            status: "APPROVED",
+            startDate: { lte: monthEnd },
+            endDate: { gte: monthStart },
+          },
+        }),
     prisma.dayLockConfig.findUnique({ where: { id: "global" } }),
   ]);
 
@@ -145,9 +183,11 @@ export async function GET(req: NextRequest) {
   });
 
   // Stats use only elapsed working days (up to today) for the current month;
-  // for past months use all days. This aligns with the dashboard's monthly stats.
+  // for past months use all days. For future months, return zero stats.
   const statsDaySet = new Set(
-    (isCurrentMonth ? workingDays.filter((d) => toIsoDate(d) <= todayDateStr) : workingDays).map((d) => toIsoDate(d))
+    isFutureMonth
+      ? []
+      : (isCurrentMonth ? workingDays.filter((d) => toIsoDate(d) <= todayDateStr) : workingDays).map((d) => toIsoDate(d))
   );
   const dayStats = days
     .filter((d) => statsDaySet.has(d.date))
@@ -166,6 +206,7 @@ export async function GET(req: NextRequest) {
     userId,
     month,
     year,
+    isFuturePlan: isFutureMonth && isAdminViewer,
     minYear: minDate.getFullYear(),
     minMonth: minDate.getMonth() + 1,
     maxYear: maxDate.getFullYear(),

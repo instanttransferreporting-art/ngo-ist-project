@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
+const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
 interface Task {
   id: string;
   group: string;
@@ -22,7 +24,21 @@ interface Assignment {
   userId: string;
 }
 
+interface MonthlyPlan {
+  exists: boolean;
+  useCurrentTasks: boolean;
+  taskIds: string[];
+}
+
 export default function TasksPage() {
+  const now = new Date();
+
+  // Next month reference (computed once per render — stable during a session)
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const planMonth = nextMonthDate.getMonth() + 1;
+  const planYear = nextMonthDate.getFullYear();
+  const nextMonthLabel = `${MONTHS_FR[nextMonthDate.getMonth()]} ${nextMonthDate.getFullYear()}`;
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -39,6 +55,13 @@ export default function TasksPage() {
   const [importAssign, setImportAssign] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Planning state for next month
+  const [plan, setPlan] = useState<MonthlyPlan | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planError, setPlanError] = useState("");
+  const [planSuccess, setPlanSuccess] = useState("");
 
   const fetchTasks = useCallback(async () => {
     const res = await fetch("/api/tasks");
@@ -59,8 +82,89 @@ export default function TasksPage() {
     if (res.ok) setAssignments(await res.json());
   }, []);
 
+  const fetchPlan = useCallback(async (userId: string) => {
+    if (!userId) return;
+    setLoadingPlan(true);
+    const res = await fetch(`/api/monthly-plan?userId=${userId}&month=${planMonth}&year=${planYear}`);
+    if (res.ok) setPlan(await res.json());
+    else setPlan({ exists: false, useCurrentTasks: true, taskIds: [] });
+    setLoadingPlan(false);
+  }, [planMonth, planYear]);
+
   useEffect(() => { fetchTasks(); fetchUsers(); }, [fetchTasks, fetchUsers]);
-  useEffect(() => { if (selectedUserId) fetchAssignments(selectedUserId); }, [selectedUserId, fetchAssignments]);
+  useEffect(() => {
+    if (selectedUserId) {
+      fetchAssignments(selectedUserId);
+      fetchPlan(selectedUserId);
+    } else {
+      setPlan(null);
+    }
+  }, [selectedUserId, fetchAssignments, fetchPlan]);
+
+  async function savePlanState(useCurrentTasks: boolean, taskIds: string[]) {
+    if (!selectedUserId) return;
+    setSavingPlan(true);
+    setPlanError("");
+    setPlanSuccess("");
+    const res = await fetch("/api/monthly-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: selectedUserId, month: planMonth, year: planYear, useCurrentTasks, taskIds }),
+    });
+    if (res.ok) {
+      setPlan({ exists: true, useCurrentTasks, taskIds: useCurrentTasks ? [] : taskIds });
+      setPlanSuccess("Plan enregistré");
+      setTimeout(() => setPlanSuccess(""), 2000);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setPlanError(body.error ?? "Erreur lors de l'enregistrement du plan");
+    }
+    setSavingPlan(false);
+  }
+
+  async function resetPlan() {
+    if (!selectedUserId) return;
+    if (!confirm(`Réinitialiser le plan pour ${nextMonthLabel} ?`)) return;
+    setSavingPlan(true);
+    setPlanError("");
+    const res = await fetch(`/api/monthly-plan?userId=${selectedUserId}&month=${planMonth}&year=${planYear}`, { method: "DELETE" });
+    if (res.ok) {
+      setPlan({ exists: false, useCurrentTasks: true, taskIds: [] });
+      setPlanSuccess("Plan réinitialisé");
+      setTimeout(() => setPlanSuccess(""), 2000);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setPlanError(body.error ?? "Erreur lors de la réinitialisation");
+    }
+    setSavingPlan(false);
+  }
+
+  function handleToggleUseCurrentTasks(checked: boolean) {
+    const newTaskIds = checked ? [] : assignments.map((a) => a.taskId);
+    setPlan((prev) => ({ ...(prev ?? { exists: true }), useCurrentTasks: checked, taskIds: newTaskIds }));
+    savePlanState(checked, newTaskIds);
+  }
+
+  function handleTogglePlanTask(taskId: string) {
+    if (!plan) return;
+    const currentIds = plan.taskIds;
+    const newIds = currentIds.includes(taskId)
+      ? currentIds.filter((id) => id !== taskId)
+      : [...currentIds, taskId];
+    setPlan((prev) => prev ? { ...prev, taskIds: newIds } : prev);
+    savePlanState(false, newIds);
+  }
+
+  async function assignAllPlan() {
+    const allIds = tasks.map((t) => t.id);
+    setPlan((prev) => prev ? { ...prev, useCurrentTasks: false, taskIds: allIds } : prev);
+    await savePlanState(false, allIds);
+  }
+
+  async function unassignAllPlan() {
+    setPlan((prev) => prev ? { ...prev, useCurrentTasks: false, taskIds: [] } : prev);
+    await savePlanState(false, []);
+  }
 
   function openCreate() {
     setEditTask(null);
@@ -128,6 +232,17 @@ export default function TasksPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: selectedUserId, taskIds: allIds }),
+    });
+    fetchAssignments(selectedUserId);
+  }
+
+  async function unassignAll() {
+    if (!selectedUserId) return;
+    if (!confirm("Désassigner toutes les tâches de cet employé ?")) return;
+    await fetch("/api/assignments", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: selectedUserId }),
     });
     fetchAssignments(selectedUserId);
   }
@@ -296,24 +411,30 @@ export default function TasksPage() {
       {/* Assign tab */}
       {tab === "assign" && (
         <div>
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
             <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}
               className="px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
               <option value="">-- Sélectionner un employé --</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
             {selectedUserId && (
-              <button onClick={assignAll}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors">
-                Tout assigner
-              </button>
+              <>
+                <button onClick={assignAll}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors">
+                  Tout assigner
+                </button>
+                <button onClick={unassignAll}
+                  className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-sm font-medium transition-colors">
+                  Désassigner tout
+                </button>
+              </>
             )}
           </div>
 
           {selectedUserId && (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-6">
               <div className="px-6 py-3 border-b border-slate-100 text-sm text-slate-600">
-                {assignments.length} tâche(s) assignée(s)
+                {assignments.length} tâche(s) assignée(s) — mois en cours
               </div>
               {Object.entries(groups).map(([groupName, groupTasks]) => (
                 <div key={groupName} className="border-b border-slate-100 last:border-0">
@@ -330,6 +451,109 @@ export default function TasksPage() {
               {tasks.length === 0 && <div className="px-6 py-8 text-center text-slate-400">Aucune tâche dans la bibliothèque</div>}
             </div>
           )}
+
+          {/* ── Future month planning ── */}
+          {selectedUserId && (
+            <div className="border border-blue-200 rounded-xl overflow-hidden">
+              <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <h3 className="font-semibold text-slate-800 text-sm">Planifier pour {nextMonthLabel}</h3>
+                </div>
+                <button
+                  onClick={resetPlan}
+                  disabled={savingPlan || !plan?.exists}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Réinitialiser
+                </button>
+              </div>
+
+              <div className="px-6 py-4">
+                {planError && <div className="mb-3 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{planError}</div>}
+                {planSuccess && <div className="mb-3 bg-green-50 border border-green-200 text-green-700 text-xs px-3 py-2 rounded-lg">{planSuccess}</div>}
+
+                {loadingPlan ? (
+                  <div className="text-sm text-slate-400">Chargement du plan...</div>
+                ) : (
+                  <>
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={plan?.useCurrentTasks ?? true}
+                        onChange={(e) => handleToggleUseCurrentTasks(e.target.checked)}
+                        disabled={savingPlan}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-slate-800 group-hover:text-blue-700">Utiliser les tâches en cours</span>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Si coché, les tâches actuellement assignées à cet employé seront automatiquement reconduites pour {nextMonthLabel}.
+                        </p>
+                      </div>
+                    </label>
+
+                    {plan && !plan.useCurrentTasks && (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-slate-500">{plan.taskIds.length} tâche(s) planifiée(s)</span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={assignAllPlan}
+                              disabled={savingPlan}
+                              className="px-2.5 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium disabled:opacity-50"
+                            >
+                              Tout sélectionner
+                            </button>
+                            <button
+                              onClick={unassignAllPlan}
+                              disabled={savingPlan}
+                              className="px-2.5 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium disabled:opacity-50"
+                            >
+                              Tout décocher
+                            </button>
+                          </div>
+                        </div>
+
+                        {Object.entries(groups).map(([groupName, groupTasks]) => (
+                          <div key={groupName} className="border border-slate-100 rounded-lg overflow-hidden mb-2">
+                            <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wide">{groupName}</div>
+                            {groupTasks.map((task) => (
+                              <label key={task.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-t border-slate-50">
+                                <input
+                                  type="checkbox"
+                                  checked={plan.taskIds.includes(task.id)}
+                                  onChange={() => handleTogglePlanTask(task.id)}
+                                  disabled={savingPlan}
+                                />
+                                <span className="text-sm text-slate-800">{task.title}</span>
+                                {task.deadline && <span className="text-xs text-slate-400 ml-auto">{task.deadline}</span>}
+                              </label>
+                            ))}
+                          </div>
+                        ))}
+                        {tasks.length === 0 && (
+                          <div className="text-center py-6 text-slate-400 text-sm">Aucune tâche dans la bibliothèque</div>
+                        )}
+                      </div>
+                    )}
+
+                    {(plan?.useCurrentTasks ?? true) && (
+                      <div className="mt-3 px-3 py-2 bg-blue-50 rounded-lg text-xs text-blue-600">
+                        Les {assignments.length} tâche(s) actuellement assignées seront reconduites automatiquement pour {nextMonthLabel}.
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {!selectedUserId && <div className="text-center py-10 text-slate-400">Sélectionnez un employé pour gérer ses assignations</div>}
         </div>
       )}

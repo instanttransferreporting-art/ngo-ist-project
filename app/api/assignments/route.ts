@@ -10,7 +10,7 @@ const assignSchema = z.object({
 
 const removeSchema = z.object({
   userId: z.string(),
-  taskId: z.string(),
+  taskId: z.string().optional(),
 });
 
 /** GET /api/assignments?userId=xxx  — list assignments for a user */
@@ -77,6 +77,11 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { userId, taskId } = parsed.data;
-  await prisma.taskAssignment.deleteMany({ where: { userId, taskId } });
+  if (taskId) {
+    await prisma.taskAssignment.deleteMany({ where: { userId, taskId } });
+  } else {
+    // No taskId = delete ALL assignments for this user
+    await prisma.taskAssignment.deleteMany({ where: { userId } });
+  }
   return Response.json({ ok: true });
 }
