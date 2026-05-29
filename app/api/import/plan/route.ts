@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   let rows: Array<{ groupe: string; titre: string; delai?: string; ordre?: number; executants?: string }>;
+  
   try {
     rows = parseTasksFromExcel(buffer);
   } catch {
