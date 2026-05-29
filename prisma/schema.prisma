@@ -73,6 +73,7 @@ model TaskAssignment {
   userId    String
   taskId    String
   order     Int      @default(0)
+  executors String   @default("")
   createdAt DateTime @default(now())
 
   user User        @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
   // Determine which assignments to show:
   // - Future month: check for a plan; use plan tasks if useCurrentTasks=false
   // - Current/past: use standard TaskAssignment
-  let assignments: Array<{ taskId: string; task: { group: string; title: string; deadline: string | null } }>;
+  let assignments: Array<{ taskId: string; executors: string; task: { group: string; title: string; deadline: string | null } }>;
 
   if (isFutureMonth && isAdminViewer) {
     const plan = await prisma.monthlyAssignmentPlan.findUnique({
@@ -107,7 +107,13 @@ export async function GET(req: NextRequest) {
     });
 
     if (plan && !plan.useCurrentTasks) {
-      assignments = plan.tasks.map((pt) => ({ taskId: pt.taskId, task: pt.task }));
+      // Fetch executors from TaskAssignment for each plan task
+      const taskAssignmentData = await prisma.taskAssignment.findMany({
+        where: { userId },
+        select: { taskId: true, executors: true },
+      });
+      const execMap = new Map(taskAssignmentData.map((a) => [a.taskId, a.executors]));
+      assignments = plan.tasks.map((pt) => ({ taskId: pt.taskId, executors: execMap.get(pt.taskId) ?? "", task: pt.task }));
     } else {
       // useCurrentTasks=true or no plan → use current TaskAssignment
       assignments = await prisma.taskAssignment.findMany({
@@ -220,6 +226,7 @@ export async function GET(req: NextRequest) {
       group: a.task.group,
       title: a.task.title,
       deadline: a.task.deadline,
+      executors: a.executors,
     })),
     days,
     stats,

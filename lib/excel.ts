@@ -7,6 +7,7 @@ export interface ExcelTaskRow {
   titre: string;
   delai?: string;
   ordre?: number;
+  executants?: string;
 }
 
 export interface ExcelDailyRow {
@@ -58,11 +59,13 @@ export function parseTasksFromExcel(buffer: Buffer): ExcelTaskRow[] {
       ).trim();
       const delai = String(normalized["delai"] ?? normalized["deadline"] ?? "").trim() || undefined;
       const ordre = normalized["ordre"] ?? normalized["order"] ?? normalized["ordonnancement"];
+      const executants = String(normalized["executants"] ?? normalized["executors"] ?? "").trim() || undefined;
       return {
         groupe,
         titre,
         delai,
         ordre: ordre ? Number(ordre) : undefined,
+        executants,
       } as ExcelTaskRow;
     })
     .filter((r) => r.groupe && r.titre);

@@ -85,3 +85,25 @@ export async function DELETE(req: NextRequest) {
   }
   return Response.json({ ok: true });
 }
+
+/** PATCH /api/assignments — update executors for a specific assignment */
+export async function PATCH(req: NextRequest) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { userId, taskId, executors } = body as { userId?: string; taskId?: string; executors?: string };
+
+  if (!userId || !taskId) {
+    return Response.json({ error: "userId et taskId requis" }, { status: 400 });
+  }
+
+  await prisma.taskAssignment.updateMany({
+    where: { userId, taskId },
+    data: { executors: executors ?? "" },
+  });
+
+  return Response.json({ ok: true });
+}

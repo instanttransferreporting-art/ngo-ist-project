@@ -8,8 +8,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "NGO IST – Gestion des tâches",
-  description: "Système de gestion des tâches pour NGO IST",
+  title: "BQ Instant Transfer – Bilan Quotidien",
+  description: "Système de gestion des tâches BQ Instant Transfer",
 };
 
 export default function RootLayout({

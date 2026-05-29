@@ -15,6 +15,12 @@ interface LeaveRequest {
   user: { name: string; email: string };
 }
 
+interface Employee {
+  id: string;
+  name: string;
+  role: string;
+}
+
 const statusLabels = { PENDING: "En attente", APPROVED: "Approuvé", REJECTED: "Refusé" };
 const statusColors = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -26,6 +32,13 @@ export default function LeavesPage() {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("PENDING");
+  const [users, setUsers] = useState<Employee[]>([]);
+
+  // Create form state
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ userId: "", startDate: "", endDate: "", reason: "" });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const fetchLeaves = useCallback(async () => {
     setLoading(true);
@@ -36,6 +49,39 @@ export default function LeavesPage() {
   }, [filterStatus]);
 
   useEffect(() => { fetchLeaves(); }, [fetchLeaves]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/users");
+      if (res.ok && !cancelled) {
+        const all: Employee[] = await res.json();
+        setUsers(all.filter((u) => u.role === "EMPLOYEE"));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setCreateError("");
+    const res = await fetch("/api/leaves", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(createForm),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setCreateError(data.error ?? "Erreur");
+      setCreating(false);
+      return;
+    }
+    setShowCreate(false);
+    setCreateForm({ userId: "", startDate: "", endDate: "", reason: "" });
+    fetchLeaves();
+    setCreating(false);
+  }
 
   async function updateStatus(id: string, status: "APPROVED" | "REJECTED") {
     const res = await fetch(`/api/leaves/${id}`, {
@@ -50,10 +96,99 @@ export default function LeavesPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Demandes de congés</h1>
-        <p className="text-slate-500 mt-1">Approuver ou refuser les demandes des employés</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Demandes de congés</h1>
+          <p className="text-slate-500 mt-1">Approuver ou refuser les demandes des employés</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-medium rounded-lg text-sm transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Enregistrer un congé
+        </button>
       </div>
+
+      {/* ── Admin create leave modal ── */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="font-semibold text-slate-800">Enregistrer un congé</h2>
+              <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="p-6 space-y-4">
+              {createError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{createError}</div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Employé</label>
+                <select
+                  required
+                  value={createForm.userId}
+                  onChange={(e) => setCreateForm({ ...createForm, userId: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                >
+                  <option value="">-- Sélectionner un employé --</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Début</label>
+                  <input
+                    type="date" required
+                    value={createForm.startDate}
+                    onChange={(e) => setCreateForm({ ...createForm, startDate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Fin</label>
+                  <input
+                    type="date" required
+                    value={createForm.endDate}
+                    onChange={(e) => setCreateForm({ ...createForm, endDate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Motif <span className="text-slate-400 font-normal">(optionnel)</span>
+                </label>
+                <input
+                  type="text"
+                  value={createForm.reason}
+                  onChange={(e) => setCreateForm({ ...createForm, reason: e.target.value })}
+                  placeholder="Ex: Vacances annuelles, Maladie..."
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
+              <p className="text-xs text-slate-500">
+                Le congé sera enregistré avec le statut <strong>Approuvé</strong> automatiquement.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowCreate(false)}
+                  className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+                  Annuler
+                </button>
+                <button type="submit" disabled={creating}
+                  className="flex-1 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white rounded-lg text-sm font-medium">
+                  {creating ? "Enregistrement..." : "Enregistrer"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Filter */}
       <div className="flex gap-2 mb-4">

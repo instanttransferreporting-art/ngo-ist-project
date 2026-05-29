@@ -89,8 +89,8 @@ export async function POST(req: NextRequest) {
         const task = created[idx];
         await prisma.taskAssignment.upsert({
           where: { userId_taskId: { userId, taskId: task.id } },
-          create: { userId, taskId: task.id, order: idx },
-          update: { order: idx },
+          create: { userId, taskId: task.id, order: idx, executors: rows[idx].executants ?? "" },
+          update: { order: idx, executors: rows[idx].executants ?? "" },
         });
       }
       assigned = created.length;
