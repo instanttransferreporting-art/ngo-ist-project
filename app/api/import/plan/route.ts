@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Impossible de lire le fichier" }, { status: 400 });
   }
 
-  let rows: Array<{ groupe: string; titre: string; delai?: string; ordre?: number }>;
+  let rows: Array<{ groupe: string; titre: string; delai?: string; ordre?: number; executants?: string }>;
   try {
     rows = parseTasksFromExcel(buffer);
   } catch {
