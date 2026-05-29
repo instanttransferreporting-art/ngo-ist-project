@@ -4,7 +4,7 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY ?? "re_placeholder");
 }
 
-const FROM = process.env.RESEND_FROM ?? "NGO IST <noreply@yourdomain.com>";
+const FROM = process.env.RESEND_FROM ?? "BQ Instant Transfer <noreply@yourdomain.com>";
 
 function nl2br(input: string): string {
   return input.replace(/\n/g, "<br/>");
@@ -31,7 +31,7 @@ export async function sendReminderEmail(opts: {
     subject: subject ?? `Rappel - Remplissez vos taches du ${date}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
-        <h2 style="color:#1d4ed8">Rappel de taches - NGO IST</h2>
+        <h2 style="color:#1d4ed8">Rappel de taches - BQ Instant Transfer</h2>
         <p>Bonjour <strong>${name}</strong>,</p>
         <p>${nl2br(body)}</p>
         <p>Connectez-vous a l'application pour les cocher avant la fin de journee.</p>
@@ -39,7 +39,33 @@ export async function sendReminderEmail(opts: {
            style="display:inline-block;margin-top:16px;padding:10px 24px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none">
           Accéder à mon espace
         </a>
-        <p style="color:#6b7280;font-size:12px;margin-top:32px">NGO IST - Systeme de gestion des taches</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer - Systeme de gestion des taches</p>
+      </div>
+    `,
+  });
+  if (sendError) throw new Error(`Resend error: ${sendError.message}`);
+}
+
+// ─── Group reminder email (18h) — one simple email to configured recipients ───
+
+export async function sendGroupReminderEmail(opts: {
+  to: string[];
+  date: string;
+  cc?: string[];
+  subject?: string;
+}) {
+  const { to, date, cc, subject } = opts;
+
+  const { error: sendError } = await getResend().emails.send({
+    from: FROM,
+    to,
+    cc,
+    subject: subject ?? `Rappel tâches - ${date}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
+        <h2 style="color:#1d4ed8">Rappel - ${date}</h2>
+        <p style="font-size:16px">Veuillez remplir vos tâches du jour.</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer - Envoi automatique à 18h</p>
       </div>
     `,
   });
@@ -117,7 +143,7 @@ export async function sendDailyReportEmail(opts: {
           </thead>
           <tbody>${tableRows}</tbody>
         </table>
-        <p style="color:#6b7280;font-size:12px;margin-top:32px">NGO IST - Envoi automatique a 22h</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer - Envoi automatique a 22h</p>
       </div>
     `,
   });

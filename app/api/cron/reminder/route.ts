@@ -1,12 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendReminderEmail } from "@/lib/email";
+import { sendGroupReminderEmail } from "@/lib/email";
 import { getSession } from "@/lib/auth";
 import { isSunday, format } from "date-fns";
-
-function renderTemplate(template: string, vars: Record<string, string | number>) {
-  return template.replace(/\{(\w+)\}/g, (_m, key: string) => String(vars[key] ?? ""));
-}
 
 type EmailConfigShape = {
   id: string;
@@ -21,11 +17,11 @@ type EmailConfigShape = {
 };
 
 /**
- * POST /api/cron/reminder
- * Triggered daily at 18:00 by Vercel Cron.
+ * GET /api/cron/reminder  — called by Vercel Cron (GET)
+ * POST /api/cron/reminder — manual trigger from admin UI
  * Sends a reminder email to every employee who hasn't completed all tasks today.
  */
-export async function POST(req: NextRequest) {
+async function handler(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const isCronCall = auth === `Bearer ${process.env.CRON_SECRET}`;
   const origin = req.headers.get("origin") ?? "";
@@ -75,6 +71,7 @@ export async function POST(req: NextRequest) {
   const employees = await prisma.user.findMany({ where: { role: "EMPLOYEE" } });
   let sent = 0;
   let skipped = 0;
+  let hasPending = false;
 
   for (const emp of employees) {
     // Check if on approved leave today
@@ -97,26 +94,29 @@ export async function POST(req: NextRequest) {
 
     if (pending <= 0) { skipped++; continue; }
 
-    try {
-      const body = renderTemplate(emailConfig.reminderBody, {
-        name: emp.name,
-        pendingCount: pending,
-        date: dateStr,
-      });
+    hasPending = true;
+  }
 
-      await sendReminderEmail({
-        to: emp.email,
-        name: emp.name,
-        date: dateStr,
-        pendingCount: pending,
-        cc: Array.from(new Set([...emailConfig.cc, ...emailConfig.reminderRecipients])),
-        body,
-      });
-      sent++;
-    } catch (err) {
-      console.error(`Failed to send reminder to ${emp.email}:`, err);
+  if (hasPending) {
+    const recipients = emailConfig.dailyRecipients.length > 0
+      ? emailConfig.dailyRecipients
+      : emailConfig.recipients;
+
+    if (recipients.length > 0) {
+      try {
+        await sendGroupReminderEmail({
+          to: recipients,
+          date: dateStr,
+          cc: emailConfig.cc.length > 0 ? emailConfig.cc : undefined,
+        });
+        sent = 1;
+      } catch (err) {
+        console.error("Failed to send group reminder email:", err);
+      }
     }
   }
 
   return Response.json({ ok: true, date: dateStr, sent, skipped });
 }
+
+export { handler as GET, handler as POST };

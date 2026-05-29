@@ -48,10 +48,11 @@ model User {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  assignments   TaskAssignment[]
-  dailyLogs     DailyTaskLog[]
-  leaveRequests LeaveRequest[]
-  monthlySheets MonthlySheet[]
+  assignments     TaskAssignment[]
+  dailyLogs       DailyTaskLog[]
+  leaveRequests   LeaveRequest[]
+  monthlySheets   MonthlySheet[]
+  monthlyPlans    MonthlyAssignmentPlan[]
 }
 
 model TaskLibrary {
@@ -62,8 +63,9 @@ model TaskLibrary {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
 
-  assignments TaskAssignment[]
-  dailyLogs   DailyTaskLog[]
+  assignments     TaskAssignment[]
+  dailyLogs       DailyTaskLog[]
+  monthlyPlanTasks MonthlyPlanTask[]
 }
 
 model TaskAssignment {
@@ -71,6 +73,7 @@ model TaskAssignment {
   userId    String
   taskId    String
   order     Int      @default(0)
+  executors String   @default("")
   createdAt DateTime @default(now())
 
   user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -146,4 +149,34 @@ model MonthlySheet {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, month, year])
+}
+
+/// Pre-planned task assignments for a future month.
+/// useCurrentTasks=true means "apply current TaskAssignment when month starts".
+/// useCurrentTasks=false means use the tasks listed in MonthlyPlanTask.
+model MonthlyAssignmentPlan {
+  id              String   @id @default(cuid())
+  userId          String
+  month           Int
+  year            Int
+  useCurrentTasks Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks MonthlyPlanTask[]
+
+  @@unique([userId, month, year])
+}
+
+model MonthlyPlanTask {
+  id      String @id @default(cuid())
+  planId  String
+  taskId  String
+  order   Int    @default(0)
+
+  plan MonthlyAssignmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  task TaskLibrary           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, taskId])
 }

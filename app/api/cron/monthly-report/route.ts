@@ -35,7 +35,11 @@ type EmailConfigShape = {
   monthlyReportBody: string;
 };
 
-export async function POST(req: NextRequest) {
+/**
+ * GET /api/cron/monthly-report  — called by Vercel Cron (GET)
+ * POST /api/cron/monthly-report — manual trigger from admin UI (accepts { month, year } body)
+ */
+async function handler(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const isCronCall = auth === `Bearer ${process.env.CRON_SECRET}`;
   const origin = req.headers.get("origin") ?? "";
@@ -243,3 +247,5 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
+
+export { handler as GET, handler as POST };

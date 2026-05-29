@@ -7,6 +7,7 @@ const createSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().optional(),
+  userId: z.string().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -44,18 +45,22 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { startDate, endDate, reason } = parsed.data;
+  const { startDate, endDate, reason, userId: bodyUserId } = parsed.data;
 
   if (new Date(startDate) > new Date(endDate)) {
     return Response.json({ error: "La date de fin doit être après la date de début" }, { status: 400 });
   }
 
+  const targetUserId = session.role === "ADMIN" && bodyUserId ? bodyUserId : session.userId;
+  const status = session.role === "ADMIN" && bodyUserId ? "APPROVED" : "PENDING";
+
   const leave = await prisma.leaveRequest.create({
     data: {
-      userId: session.userId,
+      userId: targetUserId,
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       reason,
+      status,
     },
     include: { user: { select: { name: true, email: true } } },
   });

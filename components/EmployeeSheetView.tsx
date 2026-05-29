@@ -12,6 +12,7 @@ interface TaskLog {
   group: string;
   title: string;
   deadline?: string | null;
+  executors?: string;
 }
 
 interface ExtraLog {
@@ -32,6 +33,7 @@ interface Assignment {
   group: string;
   title: string;
   deadline?: string | null;
+  executors?: string;
 }
 
 interface MonthStats {
@@ -49,6 +51,7 @@ interface SheetData {
   userId: string;
   month: number;
   year: number;
+  isFuturePlan?: boolean;
   minMonth: number;
   minYear: number;
   maxMonth: number;
@@ -113,6 +116,10 @@ export function EmployeeSheetView({
     setCollapsedWeeks({});
     setCollapsedDays({});
   }, [month, year, userId]);
+
+  useEffect(() => {
+    if (data?.isFuturePlan) setActiveTab("tasklist");
+  }, [data?.isFuturePlan]);
 
   async function saveTemplate(nextTemplate: "A" | "B") {
     if (!isAdmin || !data) return;
@@ -472,6 +479,18 @@ export function EmployeeSheetView({
         <div className="mb-3 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>
       )}
 
+      {data.isFuturePlan && (
+        <div className="mb-4 flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-sm px-4 py-3 rounded-lg">
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+          </svg>
+          <span>
+            <strong>Planification — mois à venir.</strong> Les tâches affichées correspondent au plan configuré dans l&apos;onglet Tâches. Gérez le plan depuis{" "}
+            <a href="/admin/tasks" className="underline font-medium">Tâches → Assigner aux employés</a>.
+          </span>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-slate-200">
         <button
@@ -503,9 +522,27 @@ export function EmployeeSheetView({
               {tasks.map((t) => (
                 <div key={t.taskId} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50">
                   <span className="text-sm text-slate-800">{t.title}</span>
-                  {t.deadline && (
-                    <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{t.deadline}</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {t.deadline && (
+                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{t.deadline}</span>
+                    )}
+                    {(() => {
+                      const parts = (t.executors ?? "").split("/").map((n) => n.trim()).filter(Boolean);
+                      if (parts.length === 0) return null;
+                      return (
+                        <div className="relative group/exec inline-block">
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium cursor-default">
+                            {parts[0]}{parts.length > 1 && ` +${parts.length - 1}`}
+                          </span>
+                          {parts.length > 1 && (
+                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover/exec:block z-10 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                              {parts.join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               ))}
             </div>
@@ -537,12 +574,13 @@ export function EmployeeSheetView({
           {activeTemplate === "B" ? (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               <div className="overflow-auto max-h-[70vh]">
-                <table className="min-w-[1100px] w-full text-sm border-collapse">
+                <table className="min-w-[1260px] w-full text-sm border-collapse">
                   <thead>
                     <tr>
                       <th className="sticky top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-3 py-2 text-left" style={{ left: 0, position: "sticky", minWidth: 220 }}>Groupe</th>
                       <th className="sticky top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-3 py-2 text-left" style={{ left: 220, position: "sticky", minWidth: 340 }}>Tâche</th>
                       <th className="sticky top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-3 py-2 text-left" style={{ left: 560, position: "sticky", minWidth: 130 }}>Délai</th>
+                      <th className="sticky top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-3 py-2 text-left" style={{ left: 690, position: "sticky", minWidth: 160 }}>Exécutants</th>
                       {visibleDays.map((d) => {
                         const isTodayCol = d.date === todayStr;
                         return (
@@ -560,7 +598,7 @@ export function EmployeeSheetView({
                     {groupedAssignments.map(({ id, groupName, items }) => (
                       <React.Fragment key={id}>
                         <tr>
-                          <td className="sticky z-10 bg-amber-50 border-r border-b border-slate-200 px-3 py-2 font-semibold text-amber-800" style={{ left: 0, position: "sticky" }} colSpan={3}>
+                          <td className="sticky z-10 bg-amber-50 border-r border-b border-slate-200 px-3 py-2 font-semibold text-amber-800" style={{ left: 0, position: "sticky" }} colSpan={4}>
                             {groupName}
                           </td>
                           {visibleDays.map((d) => (
@@ -572,6 +610,23 @@ export function EmployeeSheetView({
                             <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-600" style={{ left: 0, position: "sticky" }} />
                             <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-800" style={{ left: 220, position: "sticky" }}>{task.title}</td>
                             <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-500" style={{ left: 560, position: "sticky" }}>{task.deadline ?? "-"}</td>
+                            <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2" style={{ left: 690, position: "sticky" }}>
+                              {task.executors ? (
+                                <div className="relative group/exec inline-block">
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium cursor-default">
+                                    {task.executors.split("/")[0].trim()}
+                                    {task.executors.split("/").length > 1 && ` +${task.executors.split("/").length - 1}`}
+                                  </span>
+                                  {task.executors.split("/").length > 1 && (
+                                    <div className="absolute bottom-full left-0 mb-1 hidden group-hover/exec:block z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg max-w-52 break-words">
+                                      {task.executors.split("/").map((n) => n.trim()).join(" · ")}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-300 text-xs">-</span>
+                              )}
+                            </td>
                             {visibleDays.map((d) => {
                               const log = predefinedByDateTask[d.date]?.[task.taskId];
                               const checked = !!log?.done;
@@ -601,10 +656,8 @@ export function EmployeeSheetView({
                     ))}
 
                     <tr>
-                      <td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 font-semibold text-slate-700" style={{ left: 0, position: "sticky" }}>Extra</td>
-                      <td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 text-slate-600" style={{ left: 220, position: "sticky" }}>Historique des tâches extra</td>
-                      <td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 text-slate-500" style={{ left: 560, position: "sticky" }}>-</td>
-                      {visibleDays.map((d) => {
+                      {/* <td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 font-semibold text-slate-700" style={{ left: 0, position: "sticky" }}>Extra</td> */}
+                      <td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 font-semibold text-slate-700" style={{ left: 0, position: "sticky" }}>Extra</td><td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 text-slate-600" style={{ left: 220, position: "sticky" }}>Historique des tâches extra</td><td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2 text-slate-500" style={{ left: 560, position: "sticky" }}>-</td><td className="sticky z-10 bg-slate-50 border-r border-b border-slate-200 px-3 py-2" style={{ left: 690, position: "sticky" }} />{visibleDays.map((d) => {
                         const tooltip = d.extraLogs
                           .map((e) => `${e.done ? "[x]" : "[ ]"} ${e.extraLabel ?? "Sans libellé"}`)
                           .join("\n");
@@ -756,6 +809,23 @@ export function EmployeeSheetView({
                               {log.deadline && (
                                 <span className="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{log.deadline}</span>
                               )}
+                              {(() => {
+                                const exec = tasks.find((t) => t.taskId === log.taskId)?.executors ?? "";
+                                const parts = exec.split("/").map((n) => n.trim()).filter(Boolean);
+                                if (parts.length === 0) return null;
+                                return (
+                                  <div className="relative group/exec inline-block">
+                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium cursor-default">
+                                      {parts[0]}{parts.length > 1 && ` +${parts.length - 1}`}
+                                    </span>
+                                    {parts.length > 1 && (
+                                      <div className="absolute bottom-full left-0 mb-1 hidden group-hover/exec:block z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg max-w-52 break-words">
+                                        {parts.join(" · ")}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </label>
                           ))}
                         </div>
