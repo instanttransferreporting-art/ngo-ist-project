@@ -1,7 +1,7 @@
 ﻿
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
@@ -81,6 +81,8 @@ export default function TasksPage() {
   const [planImportSuccess, setPlanImportSuccess] = useState("");
   const [showPlanImport, setShowPlanImport] = useState(false);
   const [showRecentTasks, setShowRecentTasks] = useState(true);
+  const [copyingPlan, setCopyingPlan] = useState(false);
+  const [copyPlanError, setCopyPlanError] = useState("");
   const planFileRef = useRef<HTMLInputElement>(null);
 
   // ── Search state ──────────────────────────────────────────────
@@ -251,6 +253,51 @@ export default function TasksPage() {
       setPlanError(body.error ?? "Erreur lors de l'enregistrement du plan");
     }
     setSavingPlan(false);
+  }
+
+  async function copyFromPreviousMonth() {
+    if (!planUserId) return;
+    setCopyingPlan(true);
+    setCopyPlanError("");
+    setPlanError("");
+    setPlanSuccess("");
+
+    // Compute previous month
+    const prevDate = new Date(planYear, planMonth - 2, 1); // month-2 because month is 1-based
+    const prevMonth = prevDate.getMonth() + 1;
+    const prevYear = prevDate.getFullYear();
+
+    const res = await fetch(`/api/monthly-plan?userId=${planUserId}&month=${prevMonth}&year=${prevYear}`);
+    if (!res.ok) {
+      setCopyPlanError("Impossible de récupérer le plan du mois précédent.");
+      setCopyingPlan(false);
+      return;
+    }
+    const prevPlan = await res.json();
+    if (!prevPlan.exists) {
+      const MONTHS_FR_LOCAL = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+      setCopyPlanError(`Aucun plan trouvé pour ${MONTHS_FR_LOCAL[prevMonth - 1]} ${prevYear}.`);
+      setCopyingPlan(false);
+      return;
+    }
+    if (prevPlan.useCurrentTasks) {
+      setCopyPlanError("Le plan du mois précédent est en mode 'Reconduire par défaut' — il n'y a pas de sélection à copier.");
+      setCopyingPlan(false);
+      return;
+    }
+    if (!prevPlan.taskIds || prevPlan.taskIds.length === 0) {
+      setCopyPlanError("Le plan du mois précédent ne contient aucune tâche.");
+      setCopyingPlan(false);
+      return;
+    }
+
+    // Apply copied task IDs to current month
+    const validIds = prevPlan.taskIds.filter((id: string) => tasks.some((t) => t.id === id));
+    setPlan((prev) => ({ ...(prev ?? { exists: true }), useCurrentTasks: false, taskIds: validIds }));
+    await savePlanState(false, validIds);
+    const MONTHS_FR_LOCAL = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+    setPlanSuccess(`${validIds.length} tâche(s) copiée(s) depuis ${MONTHS_FR_LOCAL[prevMonth - 1]} ${prevYear}.`);
+    setCopyingPlan(false);
   }
 
   async function resetPlan() {
@@ -425,6 +472,21 @@ export default function TasksPage() {
     }
   }
 
+  // ── Autocomplete suggestions ─────────────────────────────────────────────
+
+  const uniqueGroups = useMemo(
+    () => [...new Set(tasks.map((t) => t.group))].sort(),
+    [tasks]
+  );
+  const uniqueDeadlines = useMemo(
+    () => [...new Set(tasks.map((t) => t.deadline).filter(Boolean))].sort() as string[],
+    [tasks]
+  );
+  const groupFilteredTasks = useMemo(
+    () => (form.group ? tasks.filter((t) => t.group === form.group) : tasks),
+    [tasks, form.group]
+  );
+
   // ── Computed filtered/sorted data for tabs ────────────────────────────────
 
   const libQ = searchLib.toLowerCase();
@@ -519,27 +581,45 @@ export default function TasksPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Groupe</label>
                 <input
                   type="text" required value={form.group}
+                  list="task-group-suggestions"
                   onChange={(e) => setForm({ ...form, group: e.target.value })}
                   placeholder="Ex: Administration, Communication..."
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
+                <datalist id="task-group-suggestions">
+                  {uniqueGroups.map((g) => <option key={g} value={g} />)}
+                </datalist>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Intitulé de la tâche</label>
                 <input
                   type="text" required value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  list="task-title-suggestions"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const match = form.group
+                      ? tasks.find((t) => t.group === form.group && t.title === val)
+                      : tasks.find((t) => t.title === val);
+                    setForm({ ...form, title: val, ...(match ? { deadline: match.deadline ?? form.deadline } : {}) });
+                  }}
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
+                <datalist id="task-title-suggestions">
+                  {groupFilteredTasks.map((t) => <option key={t.id} value={t.title} />)}
+                </datalist>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Délai <span className="text-slate-400 font-normal">(optionnel)</span></label>
                 <input
                   type="text" value={form.deadline}
+                  list="task-deadline-suggestions"
                   onChange={(e) => setForm({ ...form, deadline: e.target.value })}
                   placeholder="Ex: 24h, Immédiat, Fin de journée..."
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
+                <datalist id="task-deadline-suggestions">
+                  {uniqueDeadlines.map((d) => <option key={d} value={d} />)}
+                </datalist>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Ordre d&apos;affichage</label>
@@ -870,6 +950,18 @@ export default function TasksPage() {
                         Plan de {users.find((u) => u.id === planUserId)?.name} — {planMonthLabel}
                     </h3>
                     </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                    <button
+                    onClick={copyFromPreviousMonth}
+                    disabled={savingPlan || copyingPlan || !planUserId}
+                    title="Copier le plan du mois précédent"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 text-slate-600 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200 rounded-lg transition-colors disabled:opacity-40"
+                    >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    {copyingPlan ? "Copie..." : "Copier mois préc."}
+                    </button>
                     <button
                     onClick={resetPlan}
                     disabled={savingPlan || !plan?.exists}
@@ -880,6 +972,7 @@ export default function TasksPage() {
                     </svg>
                     Réinitialiser
                     </button>
+                    </div>
                 </div>
               </div>
 
@@ -887,6 +980,9 @@ export default function TasksPage() {
               <div className="px-6 py-4">
                 {planError && (
                   <div className="mb-3 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{planError}</div>
+                )}
+                {copyPlanError && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">{copyPlanError}</div>
                 )}
                 {planSuccess && (
                   <div className="mb-3 bg-green-50 border border-green-200 text-green-700 text-xs px-3 py-2 rounded-lg">{planSuccess}</div>

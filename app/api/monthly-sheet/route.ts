@@ -52,11 +52,9 @@ export async function GET(req: NextRequest) {
   }
 
   const minDate = new Date(userRecord.createdAt.getFullYear(), userRecord.createdAt.getMonth(), 1);
-  // Admins can view up to one month ahead for future planning
+  // Allow viewing up to 12 months ahead for future planning (both admin and employee)
   const isAdminViewer = session.role === "ADMIN";
-  const maxDate = isAdminViewer
-    ? new Date(now.getFullYear(), now.getMonth() + 1, 1)
-    : new Date(now.getFullYear(), now.getMonth(), 1);
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + 12, 1);
 
   if (targetMonthDate < minDate || targetMonthDate > maxDate) {
     return Response.json(
@@ -95,7 +93,7 @@ export async function GET(req: NextRequest) {
   // - Current/past: use standard TaskAssignment
   let assignments: Array<{ taskId: string; executors: string; task: { group: string; title: string; deadline: string | null } }>;
 
-  if (isFutureMonth && isAdminViewer) {
+  if (isFutureMonth) {
     const plan = await prisma.monthlyAssignmentPlan.findUnique({
       where: { userId_month_year: { userId, month, year } },
       include: {
@@ -212,7 +210,7 @@ export async function GET(req: NextRequest) {
     userId,
     month,
     year,
-    isFuturePlan: isFutureMonth && isAdminViewer,
+    isFuturePlan: isFutureMonth,
     minYear: minDate.getFullYear(),
     minMonth: minDate.getMonth() + 1,
     maxYear: maxDate.getFullYear(),

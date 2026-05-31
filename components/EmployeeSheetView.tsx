@@ -82,7 +82,7 @@ export function EmployeeSheetView({
   const [data, setData] = useState<SheetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"sheet" | "tasklist">("sheet");
+  const [preferredTab, setPreferredTab] = useState<"sheet" | "tasklist">("sheet");
   const [extraInput, setExtraInput] = useState("");
   const [addingExtra, setAddingExtra] = useState(false);
   const [filterDone, setFilterDone] = useState<"all" | "done" | "undone">("all");
@@ -93,10 +93,23 @@ export function EmployeeSheetView({
 
   const todayStr = format(now, "yyyy-MM-dd");
 
-  const fetchSheet = useCallback(async (silent = false) => {
-    if (silent) setRefreshing(true);
-    else setLoading(true);
+  // Reset state during render when navigation context changes
+  // (React-recommended pattern — avoids useEffect+setState anti-pattern)
+  const contextKey = `${userId}-${year}-${month}`;
+  const [prevContextKey, setPrevContextKey] = useState(contextKey);
+  if (prevContextKey !== contextKey) {
+    setPrevContextKey(contextKey);
+    setLoading(true);
+    setCollapsedWeeks({});
+    setCollapsedDays({});
+    setPreferredTab("sheet");
+  }
 
+  const activeTab: "sheet" | "tasklist" = data?.isFuturePlan ? "tasklist" : preferredTab;
+
+  // Used by event handlers for silent refresh after mutations
+  const fetchSheet = useCallback(async () => {
+    setRefreshing(true);
     const res = await fetch(`/api/monthly-sheet?userId=${userId}&month=${month}&year=${year}`);
     if (res.ok) {
       setData(await res.json());
@@ -105,21 +118,22 @@ export function EmployeeSheetView({
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Erreur de chargement");
     }
-
-    if (silent) setRefreshing(false);
-    else setLoading(false);
+    setRefreshing(false);
   }, [userId, month, year]);
 
-  useEffect(() => { fetchSheet(); }, [fetchSheet]);
-
+  // Initial data load — all setState calls happen after await, no synchronous setState in effect body
   useEffect(() => {
-    setCollapsedWeeks({});
-    setCollapsedDays({});
-  }, [month, year, userId]);
-
-  useEffect(() => {
-    if (data?.isFuturePlan) setActiveTab("tasklist");
-  }, [data?.isFuturePlan]);
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/monthly-sheet?userId=${userId}&month=${month}&year=${year}`);
+      if (!cancelled) {
+        if (res.ok) { setData(await res.json()); setError(""); }
+        else { const b = await res.json().catch(() => ({})); setError(b?.error ?? "Erreur de chargement"); }
+        setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, month, year]);
 
   async function saveTemplate(nextTemplate: "A" | "B") {
     if (!isAdmin || !data) return;
@@ -129,7 +143,7 @@ export function EmployeeSheetView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: data.lockMode, template: nextTemplate }),
     });
-    if (res.ok) await fetchSheet(true);
+    if (res.ok) await fetchSheet();
     setSavingTemplate(false);
   }
 
@@ -153,8 +167,8 @@ export function EmployeeSheetView({
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Impossible d'enregistrer votre template.");
-      await fetchSheet(true);
     }
+    await fetchSheet();
     setSavingTemplate(false);
   }
 
@@ -186,7 +200,7 @@ export function EmployeeSheetView({
       body: JSON.stringify({ userId, taskId, date, done: !currentDone, type: "PREDEFINED" }),
     });
     if (res.ok) {
-      fetchSheet(true);
+      fetchSheet();
     } else {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Erreur lors de la sauvegarde");
@@ -202,7 +216,7 @@ export function EmployeeSheetView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, date, done: true, type: "EXTRA", extraLabel: extraInput.trim() }),
     });
-    if (res.ok) { setExtraInput(""); fetchSheet(true); }
+    if (res.ok) { setExtraInput(""); fetchSheet(); }
     setAddingExtra(false);
   }
 
@@ -228,7 +242,7 @@ export function EmployeeSheetView({
       body: JSON.stringify({ done: !currentDone }),
     });
     if (res.ok) {
-      fetchSheet(true);
+      fetchSheet();
     } else {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Erreur lors de la sauvegarde");
@@ -238,7 +252,7 @@ export function EmployeeSheetView({
 
   async function deleteExtra(logId: string) {
     const res = await fetch(`/api/daily-logs/${logId}`, { method: "DELETE" });
-    if (res.ok) fetchSheet(true);
+    if (res.ok) fetchSheet();
   }
 
   function isDayEditable(dateStr: string): boolean {
@@ -249,13 +263,6 @@ export function EmployeeSheetView({
       return isToday(parseISO(dateStr));
     }
     return false;
-  }
-
-  function isDayVisible(dateStr: string): boolean {
-    if (isAdmin) return true;
-    if (!data) return false;
-    if (data.lockMode === "HIDDEN") return isToday(parseISO(dateStr));
-    return true;
   }
 
   const scoreColor = data ? getScoreColor(data.stats.percentTotal) : "gray";
@@ -278,20 +285,14 @@ export function EmployeeSheetView({
   const canGoPrev = monthIndex(year, month) > monthIndex(minYear, minMonth);
   const canGoNext = monthIndex(year, month) < monthIndex(maxYear, maxMonth);
 
-  const yearOptions = useMemo(() => {
-    const arr: number[] = [];
-    for (let y = minYear; y <= maxYear; y++) arr.push(y);
-    return arr;
-  }, [minYear, maxYear]);
+  const yearOptions: number[] = [];
+  for (let y = minYear; y <= maxYear; y++) yearOptions.push(y);
 
-  const monthOptions = useMemo(() => {
-    const all = Array.from({ length: 12 }, (_, i) => i + 1);
-    return all.filter((m) => {
-      if (year === minYear && m < minMonth) return false;
-      if (year === maxYear && m > maxMonth) return false;
-      return true;
-    });
-  }, [year, minYear, minMonth, maxYear, maxMonth]);
+  const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => {
+    if (year === minYear && m < minMonth) return false;
+    if (year === maxYear && m > maxMonth) return false;
+    return true;
+  });
 
   const groups: Record<string, Assignment[]> = {};
   if (data) {
@@ -301,7 +302,12 @@ export function EmployeeSheetView({
     }
   }
 
-  const visibleDays = data ? data.days.filter((d) => isDayVisible(d.date)) : [];
+  const visibleDays = useMemo(() => {
+    if (!data) return [];
+    if (isAdmin) return data.days;
+    if (data.lockMode === "HIDDEN") return data.days.filter((d) => isToday(parseISO(d.date)));
+    return data.days;
+  }, [data, isAdmin]);
 
   const groupedAssignments = Object.entries(groups).map(([groupName, items]) => ({ groupName, items, id: groupName }));
 
@@ -485,8 +491,11 @@ export function EmployeeSheetView({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
           </svg>
           <span>
-            <strong>Planification — mois à venir.</strong> Les tâches affichées correspondent au plan configuré dans l&apos;onglet Tâches. Gérez le plan depuis{" "}
-            <a href="/admin/tasks" className="underline font-medium">Tâches → Assigner aux employés</a>.
+            <strong>Planification — mois à venir.</strong>{" "}
+            {isAdmin
+              ? <>Les tâches affichées correspondent au plan configuré. Gérez le plan depuis{" "}<a href="/admin/tasks" className="underline font-medium">Tâches → Planification</a>.</>
+              : <>Voici les tâches planifiées pour ce mois par l&apos;administrateur.</>
+            }
           </span>
         </div>
       )}
@@ -494,13 +503,13 @@ export function EmployeeSheetView({
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-slate-200">
         <button
-          onClick={() => setActiveTab("sheet")}
+          onClick={() => setPreferredTab("sheet")}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "sheet" ? "border-blue-700 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}
         >
           Feuille {monthLabel}
         </button>
         <button
-          onClick={() => setActiveTab("tasklist")}
+          onClick={() => setPreferredTab("tasklist")}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "tasklist" ? "border-blue-700 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}
         >
           TASK_LOG (tâches assignées)
