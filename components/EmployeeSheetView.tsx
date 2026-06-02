@@ -475,6 +475,18 @@ export function EmployeeSheetView({
                   </>
               )}
           </div>}
+          {!isAdmin && !data.isFuturePlan && (
+            <a
+              href={`/api/export/employee/${userId}?month=${month}&year=${year}`}
+              download
+              className="flex items-center gap-1.5 px-3 py-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M8 12l4 4m0 0l4-4m-4 4V4" />
+              </svg>
+              Exporter Excel
+            </a>
+          )}
       </div>
 
       {refreshing && (

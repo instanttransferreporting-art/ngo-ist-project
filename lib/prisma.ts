@@ -6,8 +6,11 @@ function createPrismaClient() {
   const useInsecureTls =
     databaseUrl.includes("sslmode=no-verify") || process.env.ALLOW_INSECURE_DB_TLS === "1";
 
+  // In serverless (Vercel), each function instance has its own pool.
+  // Limiting to max:1 prevents exhausting the Supabase session-mode pool (limit: 15).
   const adapter = new PrismaPg({
     connectionString: databaseUrl,
+    max: 1,
     ...(useInsecureTls ? { ssl: { rejectUnauthorized: false } } : {}),
   });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { sendLeaveRequestNotification } from "@/lib/email";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -64,6 +65,24 @@ export async function POST(req: NextRequest) {
     },
     include: { user: { select: { name: true, email: true } } },
   });
+
+  // Notify all admins when an employee submits a leave request (fire-and-forget)
+  if (status === "PENDING") {
+    prisma.user.findMany({ where: { role: "ADMIN" }, select: { email: true } })
+      .then((admins) => {
+        const adminEmails = admins.map((a) => a.email).filter(Boolean);
+        if (adminEmails.length > 0) {
+          sendLeaveRequestNotification({
+            to: adminEmails,
+            employeeName: leave.user.name,
+            startDate,
+            endDate,
+            reason,
+          }).catch(() => {/* silent */});
+        }
+      })
+      .catch(() => {/* silent */});
+  }
 
   return Response.json(leave, { status: 201 });
 }
