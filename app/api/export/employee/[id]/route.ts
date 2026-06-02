@@ -10,11 +10,12 @@ type Params = { params: Promise<{ id: string }> };
 /** GET /api/export/employee/[id]?month=5&year=2026 */
 export async function GET(req: NextRequest, { params }: Params) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  const { id: userId } = await params;
+
+  // Admins can export anyone; employees can only export themselves
+  if (!session || (session.role !== "ADMIN" && session.userId !== userId)) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  const { id: userId } = await params;
   const sp = req.nextUrl.searchParams;
   const now = new Date();
   const month = sp.get("month") ? parseInt(sp.get("month")!) : now.getMonth() + 1;

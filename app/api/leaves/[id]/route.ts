@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { sendLeaveStatusNotification } from "@/lib/email";
 import { z } from "zod";
 
 type Params = { params: Promise<{ id: string }> };
@@ -27,6 +28,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     data: { status: parsed.data.status },
     include: { user: { select: { name: true, email: true } } },
   });
+
+  // Notify the employee of the decision (fire-and-forget)
+  sendLeaveStatusNotification({
+    to: leave.user.email,
+    name: leave.user.name,
+    status: leave.status as "APPROVED" | "REJECTED",
+    startDate: leave.startDate.toISOString().slice(0, 10),
+    endDate: leave.endDate.toISOString().slice(0, 10),
+  }).catch(() => {/* silent */});
 
   return Response.json(leave);
 }

@@ -218,3 +218,70 @@ export async function sendMonthlyReportEmail(opts: {
   });
   if (sendError) throw new Error(`Resend error: ${sendError.message}`);
 }
+
+// ─── Leave request notifications ─────────────────────────────────────────────
+
+export async function sendLeaveRequestNotification(opts: {
+  to: string[];
+  employeeName: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+}) {
+  const { to, employeeName, startDate, endDate, reason } = opts;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+
+  const { error: sendError } = await getResend().emails.send({
+    from: FROM,
+    to,
+    subject: `Nouvelle demande de congé – ${employeeName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
+        <h2 style="color:#1d4ed8">Nouvelle demande de congé</h2>
+        <p><strong>${employeeName}</strong> a soumis une demande de congé :</p>
+        <table style="border-collapse:collapse;margin-top:12px">
+          <tr><td style="padding:6px 12px;font-weight:bold">Du :</td><td style="padding:6px 12px">${startDate}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold">Au :</td><td style="padding:6px 12px">${endDate}</td></tr>
+          ${reason ? `<tr><td style="padding:6px 12px;font-weight:bold">Motif :</td><td style="padding:6px 12px">${reason}</td></tr>` : ""}
+        </table>
+        <a href="${appUrl}/admin/leaves" style="display:inline-block;margin-top:20px;padding:10px 24px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none">
+          Gérer les congés
+        </a>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer</p>
+      </div>
+    `,
+  });
+  if (sendError) throw new Error(`Resend error: ${sendError.message}`);
+}
+
+export async function sendLeaveStatusNotification(opts: {
+  to: string;
+  name: string;
+  status: "APPROVED" | "REJECTED";
+  startDate: string;
+  endDate: string;
+}) {
+  const { to, name, status, startDate, endDate } = opts;
+  const isApproved = status === "APPROVED";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+
+  const { error: sendError } = await getResend().emails.send({
+    from: FROM,
+    to,
+    subject: `Votre demande de congé a été ${isApproved ? "approuvée" : "rejetée"}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
+        <h2 style="color:${isApproved ? "#16a34a" : "#dc2626"}">
+          Demande de congé ${isApproved ? "approuvée ✓" : "rejetée ✗"}
+        </h2>
+        <p>Bonjour <strong>${name}</strong>,</p>
+        <p>Votre demande de congé du <strong>${startDate}</strong> au <strong>${endDate}</strong> a été <strong>${isApproved ? "approuvée" : "rejetée"}</strong>.</p>
+        <a href="${appUrl}/employee/leaves" style="display:inline-block;margin-top:20px;padding:10px 24px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none">
+          Voir mes congés
+        </a>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer</p>
+      </div>
+    `,
+  });
+  if (sendError) throw new Error(`Resend error: ${sendError.message}`);
+}
