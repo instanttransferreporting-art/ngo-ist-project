@@ -23,60 +23,73 @@ async function getDashboardData() {
   const monthEnd = new Date(Date.UTC(year, month, 0));
   const workingDays = getWorkingDaysOfMonth(year, month).filter((d) => toIsoDate(d) <= todayStr);
 
-  const employeeStats = await Promise.all(
-    employees.map(async (emp) => {
-      const [assignments, logs, leaves] = await Promise.all([
-        prisma.taskAssignment.count({ where: { userId: emp.id } }),
-        prisma.dailyTaskLog.findMany({
-          where: { userId: emp.id, date: { gte: monthStart, lte: monthEnd } },
-        }),
-        prisma.leaveRequest.findMany({
-          where: { userId: emp.id, status: "APPROVED", startDate: { lte: monthEnd }, endDate: { gte: monthStart } },
-        }),
-      ]);
+  const employeeIds = employees.map((e) => e.id);
 
-      const approvedLeaves = leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate }));
+  // 3 bulk queries instead of N×3 parallel queries — avoids connection pool exhaustion
+  const [assignmentCounts, allLogs, allLeaves] = await Promise.all([
+    prisma.taskAssignment.groupBy({
+      by: ["userId"],
+      where: { userId: { in: employeeIds } },
+      _count: { _all: true },
+    }),
+    prisma.dailyTaskLog.findMany({
+      where: { userId: { in: employeeIds }, date: { gte: monthStart, lte: monthEnd } },
+    }),
+    prisma.leaveRequest.findMany({
+      where: { userId: { in: employeeIds }, status: "APPROVED", startDate: { lte: monthEnd }, endDate: { gte: monthStart } },
+    }),
+  ]);
 
-      // Today's status
-      const todayOnLeave = !todayIsSunday && isOnLeave(today, approvedLeaves);
-      const todayDonePredefined = logs.filter(
-        (l) => toIsoDate(new Date(l.date)) === todayStr && l.done && l.type === "PREDEFINED"
-      ).length;
-      const todayExtraLogs = logs.filter(
-        (l) => toIsoDate(new Date(l.date)) === todayStr && l.type === "EXTRA"
-      );
-      const todayDoneExtra = todayExtraLogs.filter((l) => l.done).length;
-      const todayTotal = assignments + todayExtraLogs.length;
-      const todayDone = todayDonePredefined + todayDoneExtra;
-      const todayPercent = todayTotal > 0 ? Math.round((todayDone / todayTotal) * 100) : 0;
-
-      // Monthly stats
-      const dayStats = workingDays.map((day) => {
-        const ds = toIsoDate(day);
-        const dayLogs = logs.filter((l) => toIsoDate(new Date(l.date)) === ds);
-        return {
-          date: ds,
-          totalPredefined: assignments,
-          donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done).length,
-          totalExtra: dayLogs.filter((l) => l.type === "EXTRA").length,
-          doneExtra: dayLogs.filter((l) => l.type === "EXTRA" && l.done).length,
-          isLeave: isOnLeave(day, approvedLeaves),
-          isSundayDay: false,
-        };
-      });
-
-      const monthly = calcMonthStats(dayStats);
-
-      return {
-        ...emp,
-        todayOnLeave,
-        todayDone,
-        todayTotal,
-        todayPercent: todayIsSunday ? null : todayPercent,
-        monthly,
-      };
-    })
+  const assignmentCountMap = Object.fromEntries(
+    assignmentCounts.map((r) => [r.userId, r._count._all])
   );
+
+  const employeeStats = employees.map((emp) => {
+    const assignments = assignmentCountMap[emp.id] ?? 0;
+    const logs = allLogs.filter((l) => l.userId === emp.id);
+    const leaves = allLeaves.filter((l) => l.userId === emp.id);
+
+    const approvedLeaves = leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate }));
+
+    // Today's status
+    const todayOnLeave = !todayIsSunday && isOnLeave(today, approvedLeaves);
+    const todayDonePredefined = logs.filter(
+      (l) => toIsoDate(new Date(l.date)) === todayStr && l.done && l.type === "PREDEFINED"
+    ).length;
+    const todayExtraLogs = logs.filter(
+      (l) => toIsoDate(new Date(l.date)) === todayStr && l.type === "EXTRA"
+    );
+    const todayDoneExtra = todayExtraLogs.filter((l) => l.done).length;
+    const todayTotal = assignments + todayExtraLogs.length;
+    const todayDone = todayDonePredefined + todayDoneExtra;
+    const todayPercent = todayTotal > 0 ? Math.round((todayDone / todayTotal) * 100) : 0;
+
+    // Monthly stats
+    const dayStats = workingDays.map((day) => {
+      const ds = toIsoDate(day);
+      const dayLogs = logs.filter((l) => toIsoDate(new Date(l.date)) === ds);
+      return {
+        date: ds,
+        totalPredefined: assignments,
+        donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done).length,
+        totalExtra: dayLogs.filter((l) => l.type === "EXTRA").length,
+        doneExtra: dayLogs.filter((l) => l.type === "EXTRA" && l.done).length,
+        isLeave: isOnLeave(day, approvedLeaves),
+        isSundayDay: false,
+      };
+    });
+
+    const monthly = calcMonthStats(dayStats);
+
+    return {
+      ...emp,
+      todayOnLeave,
+      todayDone,
+      todayTotal,
+      todayPercent: todayIsSunday ? null : todayPercent,
+      monthly,
+    };
+  });
 
   return { employeeStats, month, year, todayStr, todayIsSunday };
 }
