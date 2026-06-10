@@ -98,8 +98,8 @@ async function handler(req: NextRequest) {
   }
 
   if (hasPending) {
-    const recipients = emailConfig.dailyRecipients.length > 0
-      ? emailConfig.dailyRecipients
+    const recipients = emailConfig.reminderRecipients.length > 0
+      ? emailConfig.reminderRecipients
       : emailConfig.recipients;
 
     if (recipients.length > 0) {
