@@ -53,8 +53,10 @@ export async function sendGroupReminderEmail(opts: {
   date: string;
   cc?: string[];
   subject?: string;
+  body?: string;
 }) {
   const { to, date, cc, subject } = opts;
+  const body = opts.body ?? "Veuillez remplir vos tâches du jour.";
 
   const { error: sendError } = await getResend().emails.send({
     from: FROM,
@@ -64,7 +66,7 @@ export async function sendGroupReminderEmail(opts: {
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
         <h2 style="color:#1d4ed8">Rappel - ${date}</h2>
-        <p style="font-size:16px">Veuillez remplir vos tâches du jour.</p>
+        <p style="font-size:16px">${nl2br(body)}</p>
         <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer - Envoi automatique à 18h</p>
       </div>
     `,
