@@ -108,6 +108,7 @@ async function handler(req: NextRequest) {
           to: recipients,
           date: dateStr,
           cc: emailConfig.cc.length > 0 ? emailConfig.cc : undefined,
+          body: emailConfig.reminderBody || undefined,
         });
         sent = 1;
       } catch (err) {
