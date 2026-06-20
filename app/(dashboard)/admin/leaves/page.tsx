@@ -87,7 +87,7 @@ export default function LeavesPage() {
       return;
     }
     setShowCreate(false);
-    setCreateForm({ userId: "", startDate: "", endDate: "", reason: "" });
+    setCreateForm({ userId: "", startDate: "", endDate: "", reason: "", leaveType: "CONGE" });
     fetchLeaves();
     setCreating(false);
   }
