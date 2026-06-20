@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getWorkingDaysOfMonth, isOnLeave, toIsoDate, calcMonthStats, formatMonthLabel, getScoreColor, capitalizeFirst } from "@/lib/utils";
-import { isSunday, format, parseISO } from "date-fns";
+import { isSunday, format } from "date-fns";
 import Link from "next/link";
 
 async function getDashboardData() {
@@ -15,7 +15,7 @@ async function getDashboardData() {
 
   const employees = await prisma.user.findMany({
     where: { role: "EMPLOYEE" },
-    select: { id: true, name: true, email: true },
+    select: { id: true, name: true, email: true, entityId: true, entity: { select: { name: true, color: true } } },
     orderBy: { name: "asc" },
   });
 
@@ -91,7 +91,16 @@ async function getDashboardData() {
     };
   });
 
-  return { employeeStats, month, year, todayStr, todayIsSunday };
+  // Unique entities for legend
+  const entities = Array.from(
+    new Map(
+      employees
+        .filter((e) => e.entity)
+        .map((e) => [e.entity!.name, e.entity!] as [string, { name: string; color: string }])
+    ).values()
+  );
+
+  return { employeeStats, month, year, todayStr, todayIsSunday, entities };
 }
 
 const badgeMap = {
@@ -105,7 +114,7 @@ export default async function AdminDashboard() {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") redirect("/login");
 
-  const { employeeStats, month, year, todayStr, todayIsSunday } = await getDashboardData();
+  const { employeeStats, month, year, todayStr, todayIsSunday, entities } = await getDashboardData();
 
   const red = employeeStats.filter((e) => !e.todayOnLeave && (e.todayPercent ?? 0) < 50).length;
   const yellow = employeeStats.filter((e) => !e.todayOnLeave && (e.todayPercent ?? 0) >= 50 && (e.todayPercent ?? 0) <= 75).length;
@@ -159,6 +168,7 @@ export default async function AdminDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
                 <tr>
+                  <th className="text-center px-4 py-3 font-medium w-10">#</th>
                   <th className="text-left px-6 py-3 font-medium">Employé</th>
                   <th className="text-center px-4 py-3 font-medium">Aujourd&apos;hui</th>
                   <th className="text-center px-4 py-3 font-medium">% Jour</th>
@@ -177,7 +187,19 @@ export default async function AdminDashboard() {
 
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3 font-medium text-slate-900">{emp.name}</td>
+                      <td className="px-4 py-3 text-center text-slate-400 text-xs font-medium">{employeeStats.indexOf(emp) + 1}</td>
+                      <td className="px-6 py-3 font-medium text-slate-900">
+                        <div className="flex items-center gap-2">
+                          {emp.entity && (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: emp.entity.color }}
+                              title={emp.entity.name}
+                            />
+                          )}
+                          {emp.name}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-center text-slate-600">
                         {emp.todayOnLeave ? "—" : `${emp.todayDone} / ${emp.todayTotal}`}
                       </td>
@@ -222,7 +244,7 @@ export default async function AdminDashboard() {
                 })}
                 {employeeStats.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={9} className="px-6 py-10 text-center text-slate-400">
                             Aucun employé trouvé. <Link href="/admin/employees" className="text-blue-700 hover:underline">Ajouter des employés</Link>
                     </td>
                   </tr>
@@ -232,6 +254,25 @@ export default async function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Entity legend */}
+      {entities.length > 0 && (
+        <div className="mt-6 bg-white border border-slate-200 rounded-xl px-6 py-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Légende – Entités</p>
+          <div className="flex flex-wrap gap-3">
+            {entities.map((ent) => (
+              <span
+                key={ent.name}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border"
+                style={{ borderColor: ent.color, color: ent.color, backgroundColor: ent.color + "18" }}
+              >
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ent.color }} />
+                {ent.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

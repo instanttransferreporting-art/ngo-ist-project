@@ -25,6 +25,13 @@ enum LeaveStatus {
   REJECTED
 }
 
+enum LeaveType {
+  PERMISSION
+  CONGE
+  MALADIE
+  ABSENCE
+}
+
 enum LockMode {
   FREE
   LOCKED
@@ -38,6 +45,16 @@ enum SheetTemplate {
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 
+/// Sub-group / department for employees, with a distinctive color used in reports.
+model Entity {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#6b7280")
+  createdAt DateTime @default(now())
+
+  users     User[]
+}
+
 model User {
   id                    String   @id @default(cuid())
   name                  String
@@ -45,9 +62,11 @@ model User {
   password              String
   role                  Role     @default(EMPLOYEE)
   templatePreference    SheetTemplate?
+  entityId              String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  entity          Entity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
   assignments     TaskAssignment[]
   dailyLogs       DailyTaskLog[]
   leaveRequests   LeaveRequest[]
@@ -110,6 +129,7 @@ model LeaveRequest {
   endDate   DateTime    @db.Date
   reason    String?
   status    LeaveStatus @default(PENDING)
+  leaveType LeaveType   @default(CONGE)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 

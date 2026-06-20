@@ -89,6 +89,7 @@ async function handler(req: NextRequest) {
 
   const employees = await prisma.user.findMany({
     where: { role: "EMPLOYEE" },
+    select: { id: true, name: true, entity: { select: { name: true, color: true } } },
     orderBy: { name: "asc" },
   });
 
@@ -104,7 +105,7 @@ async function handler(req: NextRequest) {
       });
 
       if (onLeave > 0) {
-        return { name: emp.name, done: 0, total: 0, percent: 0, monthScore20: 0, status: "En congé" as const };
+        return { name: emp.name, done: 0, total: 0, percent: 0, monthScore20: 0, status: "En congé" as const, entityName: emp.entity?.name, entityColor: emp.entity?.color };
       }
 
       const total = await prisma.taskAssignment.count({ where: { userId: emp.id } });
@@ -157,6 +158,8 @@ async function handler(req: NextRequest) {
         percent,
         monthScore20: monthStats.score20,
         status: "Présent" as const,
+        entityName: emp.entity?.name,
+        entityColor: emp.entity?.color,
       };
     })
   );

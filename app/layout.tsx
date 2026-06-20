@@ -8,8 +8,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "BQ Instant Transfer – Bilan Quotidien",
-  description: "Système de gestion des tâches BQ Instant Transfer",
+  title: "STARGROUP - TASK LOG",
+  description: "Système de gestion des tâches STARGROUP",
 };
 
 export default function RootLayout({

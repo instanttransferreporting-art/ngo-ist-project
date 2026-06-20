@@ -62,12 +62,12 @@ export async function sendGroupReminderEmail(opts: {
     from: FROM,
     to,
     cc,
-    subject: subject ?? `Rappel tâches - ${date}`,
+    subject: subject ?? `Rappel tâches du - ${date}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
         <h2 style="color:#1d4ed8">Rappel - ${date}</h2>
         <p style="font-size:16px">${nl2br(body)}</p>
-        <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer - Envoi automatique à 18h</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:32px">STARGROUP TASK LOG - Envoi automatique à 18h</p>
       </div>
     `,
   });
@@ -83,6 +83,8 @@ export interface DailyReportRow {
   percent: number;
   monthScore20: number;
   status: "Présent" | "En congé";
+  entityName?: string;
+  entityColor?: string;
 }
 
 export async function sendDailyReportEmail(opts: {
@@ -102,7 +104,7 @@ export async function sendDailyReportEmail(opts: {
   const body = opts.body ?? `Rapport journalier du ${date}.`;
 
   const tableRows = rows
-    .map((r) => {
+    .map((r, i) => {
       const color =
         r.status === "En congé"
           ? "#6b7280"
@@ -111,9 +113,13 @@ export async function sendDailyReportEmail(opts: {
           : r.percent >= 50
           ? "#d97706"
           : "#dc2626";
+      const dotHtml = r.entityColor
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.entityColor};margin-right:6px;vertical-align:middle;flex-shrink:0"></span>`
+        : "";
       return `
         <tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${r.name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px">${i + 1}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${dotHtml}${r.name}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.done}/${r.total}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:${color}"><strong>${r.status === "En congé" ? "Congé" : r.percent + "%"}</strong></td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.status === "En congé" ? "—" : r.monthScore20 + "/20"}</td>
@@ -121,6 +127,26 @@ export async function sendDailyReportEmail(opts: {
         </tr>`;
     })
     .join("");
+
+  // Build entity legend
+  const entityMap = new Map<string, string>();
+  for (const r of rows) {
+    if (r.entityName && r.entityColor && !entityMap.has(r.entityName)) {
+      entityMap.set(r.entityName, r.entityColor);
+    }
+  }
+  const legendHtml = entityMap.size > 0
+    ? `<div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:16px">
+        <p style="font-weight:600;color:#374151;margin-bottom:8px;font-size:13px">Légende – Entités :</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${Array.from(entityMap.entries()).map(([name, color]) => `
+            <span style="display:inline-flex;align-items:center;gap:8px;background:#f9fafb;border:1px solid #e5e7eb;padding:4px 10px;border-radius:12px;font-size:12px;line-height:1">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};transform:translateY(1px);margin-right:5px"></span>
+              ${name}
+            </span>`).join("")}
+        </div>
+      </div>`
+    : "";
 
   const { error: sendError } = await getResend().emails.send({
     from: FROM,
@@ -136,6 +162,7 @@ export async function sendDailyReportEmail(opts: {
         <table style="width:100%;border-collapse:collapse;margin-top:16px">
           <thead>
             <tr style="background:#f3f4f6">
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb;color:#9ca3af;font-size:11px;width:36px">#</th>
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb">Employé</th>
               <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">Tâches</th>
               <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">%</th>
@@ -145,6 +172,7 @@ export async function sendDailyReportEmail(opts: {
           </thead>
           <tbody>${tableRows}</tbody>
         </table>
+        ${legendHtml}
         <p style="color:#6b7280;font-size:12px;margin-top:32px">BQ Instant Transfer - Envoi automatique a 22h</p>
       </div>
     `,
@@ -160,6 +188,8 @@ export interface MonthlyReportRow {
   totalTasks: number;
   leaveDays: number;
   workingDays: number;
+  entityName?: string;
+  entityColor?: string;
 }
 
 export async function sendMonthlyReportEmail(opts: {
@@ -179,10 +209,14 @@ export async function sendMonthlyReportEmail(opts: {
   const body = opts.body ?? `Rapport mensuel de ${monthLabel}.`;
 
   const tableRows = rows
-    .map((r) => {
+    .map((r, i) => {
+      const dotHtml = r.entityColor
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.entityColor};margin-right:6px;vertical-align:middle"></span>`
+        : "";
       return `
         <tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${r.name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px">${i + 1}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${dotHtml}${r.name}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.score20}/20</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.percentTotal}%</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${r.totalDone}/${r.totalTasks}</td>
@@ -191,6 +225,26 @@ export async function sendMonthlyReportEmail(opts: {
         </tr>`;
     })
     .join("");
+
+  // Build entity legend
+  const entityMap = new Map<string, string>();
+  for (const r of rows) {
+    if (r.entityName && r.entityColor && !entityMap.has(r.entityName)) {
+      entityMap.set(r.entityName, r.entityColor);
+    }
+  }
+  const legendHtml = entityMap.size > 0
+    ? `<div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:16px">
+        <p style="font-weight:600;color:#374151;margin-bottom:8px;font-size:13px">Légende – Entités :</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${Array.from(entityMap.entries()).map(([name, color]) => `
+            <span style="display:inline-flex;align-items:center;gap:8px;background:#f9fafb;border:1px solid #e5e7eb;padding:4px 10px;border-radius:12px;font-size:12px;line-height:1">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};transform:translateY(1px);margin-right:5px"></span>
+              ${name}
+            </span>`).join("")}
+        </div>
+      </div>`
+    : "";
 
   const { error: sendError } = await getResend().emails.send({
     from: FROM,
@@ -205,6 +259,7 @@ export async function sendMonthlyReportEmail(opts: {
         <table style="width:100%;border-collapse:collapse;margin-top:16px">
           <thead>
             <tr style="background:#f3f4f6">
+              <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb;color:#9ca3af;font-size:11px;width:36px">#</th>
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb">Employe</th>
               <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">Score /20</th>
               <th style="padding:10px 12px;text-align:center;border-bottom:2px solid #e5e7eb">%</th>
@@ -215,6 +270,7 @@ export async function sendMonthlyReportEmail(opts: {
           </thead>
           <tbody>${tableRows}</tbody>
         </table>
+        ${legendHtml}
       </div>
     `,
   });

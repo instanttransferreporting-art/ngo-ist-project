@@ -11,6 +11,7 @@ interface LeaveRequest {
   endDate: string;
   reason: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED";
+  leaveType: "PERMISSION" | "CONGE" | "MALADIE" | "ABSENCE";
   createdAt: string;
   user: { name: string; email: string };
 }
@@ -20,6 +21,14 @@ interface Employee {
   name: string;
   role: string;
 }
+
+const leaveTypeLabels = { PERMISSION: "Permission", CONGE: "Congé", MALADIE: "Maladie", ABSENCE: "Absence" };
+const leaveTypeColors = {
+  PERMISSION: "bg-blue-100 text-blue-700",
+  CONGE: "bg-green-100 text-green-700",
+  MALADIE: "bg-red-100 text-red-700",
+  ABSENCE: "bg-orange-100 text-orange-700",
+};
 
 const statusLabels = { PENDING: "En attente", APPROVED: "Approuvé", REJECTED: "Refusé" };
 const statusColors = {
@@ -36,7 +45,7 @@ export default function LeavesPage() {
 
   // Create form state
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ userId: "", startDate: "", endDate: "", reason: "" });
+  const [createForm, setCreateForm] = useState({ userId: "", startDate: "", endDate: "", reason: "", leaveType: "CONGE" });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
@@ -140,6 +149,19 @@ export default function LeavesPage() {
                   {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Type de congé</label>
+                <select
+                  value={createForm.leaveType}
+                  onChange={(e) => setCreateForm({ ...createForm, leaveType: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                >
+                  <option value="PERMISSION">Permission</option>
+                  <option value="CONGE">Congé</option>
+                  <option value="MALADIE">Maladie</option>
+                  <option value="ABSENCE">Absence</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Début</label>
@@ -214,6 +236,7 @@ export default function LeavesPage() {
               <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
                 <tr>
                   <th className="text-left px-6 py-3 font-medium">Employé</th>
+                  <th className="text-left px-4 py-3 font-medium">Type</th>
                   <th className="text-left px-4 py-3 font-medium">Du</th>
                   <th className="text-left px-4 py-3 font-medium">Au</th>
                   <th className="text-left px-4 py-3 font-medium">Motif</th>
@@ -225,6 +248,11 @@ export default function LeavesPage() {
                 {leaves.map((leave) => (
                   <tr key={leave.id} className="hover:bg-slate-50">
                     <td className="px-6 py-3 font-medium text-slate-900">{leave.user.name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${leaveTypeColors[leave.leaveType]}`}>
+                        {leaveTypeLabels[leave.leaveType]}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{formatDate(leave.startDate)}</td>
                     <td className="px-4 py-3 text-slate-600">{formatDate(leave.endDate)}</td>
                     <td className="px-4 py-3 text-slate-500 max-w-xs truncate">{leave.reason ?? "—"}</td>

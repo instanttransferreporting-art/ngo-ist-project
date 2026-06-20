@@ -144,7 +144,7 @@ async function handler(req: NextRequest) {
 
   const employees = await prisma.user.findMany({
     where: { role: "EMPLOYEE" },
-    select: { id: true, name: true },
+    select: { id: true, name: true, entity: { select: { name: true, color: true } } },
     orderBy: { name: "asc" },
   });
 
@@ -203,6 +203,8 @@ async function handler(req: NextRequest) {
         totalTasks: stats.totalTasks,
         leaveDays: stats.leaveDays,
         workingDays: stats.workingDays,
+        entityName: emp.entity?.name,
+        entityColor: emp.entity?.color,
       };
     })
   );
