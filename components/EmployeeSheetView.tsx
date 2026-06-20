@@ -199,9 +199,7 @@ export function EmployeeSheetView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, taskId, date, done: !currentDone, type: "PREDEFINED" }),
     });
-    if (res.ok) {
-      fetchSheet();
-    } else {
+    if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Erreur lors de la sauvegarde");
       updateDoneState(date, taskId, currentDone); // revert optimistic update

@@ -89,8 +89,8 @@ export function Sidebar({ role, name }: { role: string; name: string }) {
             </svg>
           </div>
           <div>
-            <div className="font-bold text-slate-900 text-sm leading-tight">BQ Instant Transfer</div>
-            <div className="text-xs text-slate-500">Bilan Quotidien</div>
+            <div className="font-bold text-slate-900 text-sm leading-tight">SG - TASK LOG</div>
+            <div className="text-xs text-slate-500">Gestion des tâches</div>
           </div>
         </div>
       </div>

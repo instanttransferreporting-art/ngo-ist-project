@@ -9,6 +9,7 @@ const createSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z.enum(["ADMIN", "EMPLOYEE"]).default("EMPLOYEE"),
+  entityId: z.string().nullable().optional(),
 });
 
 export async function GET() {
@@ -24,6 +25,8 @@ export async function GET() {
       email: true,
       role: true,
       createdAt: true,
+      entityId: true,
+      entity: { select: { id: true, name: true, color: true } },
     },
     orderBy: { name: "asc" },
   });
@@ -43,7 +46,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { name, email, password, role } = parsed.data;
+  const { name, email, password, role, entityId } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -52,8 +55,8 @@ export async function POST(req: NextRequest) {
 
   const hashed = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
-    data: { name, email, password: hashed, role },
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
+    data: { name, email, password: hashed, role, entityId: entityId ?? null },
+    select: { id: true, name: true, email: true, role: true, createdAt: true, entityId: true, entity: { select: { id: true, name: true, color: true } } },
   });
 
   return Response.json(user, { status: 201 });

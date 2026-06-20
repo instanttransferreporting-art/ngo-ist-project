@@ -51,8 +51,8 @@ export default function LoginPage() {
               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-slate-900">BQ Instant Transfer</h1>
-        <p className="text-slate-500 mt-1">Bilan Quotidien instant transfer</p>
+        <h1 className="text-2xl font-bold text-slate-900">STARGROUP - TASK LOG</h1>
+        <p className="text-slate-500 mt-1">Système de gestion des tâches STARGROUP</p>
       </div>
 
       {/* Card */}
@@ -105,7 +105,7 @@ export default function LoginPage() {
       </div>
 
       <p className="text-center text-xs text-slate-400 mt-6">
-        BQ Instant Transfer © {new Date().getFullYear()}
+        STARGROUP - TASK LOG © {new Date().getFullYear()}
       </p>
     </div>
   );

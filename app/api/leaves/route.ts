@@ -9,6 +9,7 @@ const createSchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().optional(),
   userId: z.string().optional(),
+  leaveType: z.enum(["PERMISSION", "CONGE", "MALADIE", "ABSENCE"]).default("CONGE"),
 });
 
 export async function GET(req: NextRequest) {
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { startDate, endDate, reason, userId: bodyUserId } = parsed.data;
+  const { startDate, endDate, reason, userId: bodyUserId, leaveType } = parsed.data;
 
   if (new Date(startDate) > new Date(endDate)) {
     return Response.json({ error: "La date de fin doit être après la date de début" }, { status: 400 });
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
       endDate: new Date(endDate),
       reason,
       status,
+      leaveType,
     },
     include: { user: { select: { name: true, email: true } } },
   });

@@ -9,6 +9,7 @@ const updateSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(6).optional(),
   role: z.enum(["ADMIN", "EMPLOYEE"]).optional(),
+  entityId: z.string().nullable().optional(),
 });
 
 type Params = { params: Promise<{ id: string }> };
@@ -26,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, createdAt: true, entityId: true, entity: { select: { id: true, name: true, color: true } } },
   });
 
   if (!user) return Response.json({ error: "Utilisateur introuvable" }, { status: 404 });
@@ -58,7 +59,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const user = await prisma.user.update({
     where: { id },
     data,
-    select: { id: true, name: true, email: true, role: true },
+    select: { id: true, name: true, email: true, role: true, entityId: true, entity: { select: { id: true, name: true, color: true } } },
   });
 
   return Response.json(user);
