@@ -88,7 +88,7 @@ async function handler(req: NextRequest) {
   }
 
   const employees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE" },
+    where: { role: "EMPLOYEE", isActive: true },
     select: { id: true, name: true, entity: { select: { name: true, color: true } } },
     orderBy: { name: "asc" },
   });

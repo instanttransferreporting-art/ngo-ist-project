@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { sendMonthlyReportEmail, MonthlyReportRow } from "@/lib/email";
-import { buildMonthlyExcel } from "@/lib/excel";
+import { buildMonthlyExcel, buildEmployeeExcel } from "@/lib/excel";
+import { getEmployeeSheetData } from "@/lib/employeeSheet";
 import { calcMonthStats, formatMonthLabel, getWorkingDaysOfMonth, isOnLeave, toIsoDate } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -143,8 +144,8 @@ async function handler(req: NextRequest) {
   }
 
   const employees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE" },
-    select: { id: true, name: true, entity: { select: { name: true, color: true } } },
+    where: { role: "EMPLOYEE", isActive: true },
+    select: { id: true, name: true, email: true, entity: { select: { name: true, color: true } } },
     orderBy: { name: "asc" },
   });
 
@@ -153,7 +154,9 @@ async function handler(req: NextRequest) {
     ? workingDays.filter((d) => toIsoDate(d) <= todayStr)
     : workingDays;
 
-  const rows: MonthlyReportRow[] = await Promise.all(
+  type MonthlyReportRowWithUser = MonthlyReportRow & { userId: string; email: string };
+
+  const rows: MonthlyReportRowWithUser[] = await Promise.all(
     employees.map(async (emp) => {
       const leaves = await prisma.leaveRequest.findMany({
         where: {
@@ -196,6 +199,8 @@ async function handler(req: NextRequest) {
       const stats = calcMonthStats(dayStats);
 
       return {
+        userId: emp.id,
+        email: emp.email,
         name: emp.name,
         score20: stats.score20,
         percentTotal: stats.percentTotal,
@@ -243,7 +248,41 @@ async function handler(req: NextRequest) {
       ],
     });
 
-    return Response.json({ ok: true, month, year, recipients: recipients.length });
+    let personalSent = 0;
+    let personalFailed = 0;
+    for (const row of rows) {
+      if (!row.email) { personalFailed++; continue; }
+      try {
+        const { headers, rows: sheetRows } = await getEmployeeSheetData(row.userId, monthStart, monthEnd, workingDays);
+        const personalExcel = buildEmployeeExcel({
+          name: row.name,
+          month: monthLabel,
+          headers,
+          rows: sheetRows,
+        });
+
+        await sendMonthlyReportEmail({
+          to: [row.email],
+          monthLabel,
+          rows: [row],
+          body: `Bonjour ${row.name}, voici votre rapport personnel de ${monthLabel}.`,
+          subject: `Votre rapport mensuel - ${monthLabel}`,
+          attachments: [
+            {
+              filename: `rapport-personnel-${monthLabel.replace(/\s/g, "-").toLowerCase()}.xlsx`,
+              content: personalExcel,
+              contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            },
+          ],
+        });
+        personalSent++;
+      } catch (err) {
+        console.error(`Failed to send personal report to ${row.email}:`, err);
+        personalFailed++;
+      }
+    }
+
+    return Response.json({ ok: true, month, year, recipients: recipients.length, personalSent, personalFailed });
   } catch (err) {
     console.error("Failed to send monthly report:", err);
     return Response.json({ ok: false, error: String(err) }, { status: 500 });

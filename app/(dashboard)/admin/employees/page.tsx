@@ -14,6 +14,7 @@ interface User {
   name: string;
   email: string;
   role: "ADMIN" | "EMPLOYEE";
+  isActive: boolean;
   createdAt: string;
   entityId?: string | null;
   entity?: Entity | null;
@@ -104,6 +105,21 @@ export default function EmployeesPage() {
     if (!confirm(`Supprimer ${name} ? Cette action est irréversible.`)) return;
     const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
     if (res.ok) fetchUsers();
+  }
+
+  async function toggleActive(user: User) {
+    const suspending = user.isActive;
+    if (suspending && !confirm(`Suspendre ${user.name} ? Il ne pourra plus se connecter ni recevoir d'emails.`)) return;
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !user.isActive }),
+    });
+    if (res.ok) {
+      setSuccess(suspending ? "Utilisateur suspendu" : "Utilisateur réactivé");
+      fetchUsers();
+      setTimeout(() => setSuccess(""), 3000);
+    }
   }
 
   function openCreateEntity() {
@@ -326,6 +342,7 @@ export default function EmployeesPage() {
                   <th className="text-left px-6 py-3 font-medium">Email</th>
                   <th className="text-center px-4 py-3 font-medium">Entité</th>
                   <th className="text-center px-4 py-3 font-medium">Rôle</th>
+                  <th className="text-center px-4 py-3 font-medium">Statut</th>
                   <th className="text-right px-6 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -364,12 +381,21 @@ export default function EmployeesPage() {
                         {user.role === "ADMIN" ? "Admin" : "Employé"}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${user.isActive ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
+                        {user.isActive ? "Actif" : "Suspendu"}
+                      </span>
+                    </td>
                     <td className="px-6 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <a href={`/admin/employees/${user.id}`}
                           className="text-xs text-blue-700 hover:underline font-medium">Fiche</a>
                         <button onClick={() => openEdit(user)}
                           className="text-xs text-slate-600 hover:text-slate-900 font-medium">Modifier</button>
+                        <button onClick={() => toggleActive(user)}
+                          className={`text-xs font-medium ${user.isActive ? "text-amber-600 hover:text-amber-800" : "text-green-600 hover:text-green-800"}`}>
+                          {user.isActive ? "Suspendre" : "Réactiver"}
+                        </button>
                         <button onClick={() => deleteUser(user.id, user.name)}
                           className="text-xs text-red-600 hover:text-red-800 font-medium">Supprimer</button>
                       </div>
@@ -377,7 +403,7 @@ export default function EmployeesPage() {
                   </tr>
                 ))}
                 {users.length === 0 && (
-                  <tr><td colSpan={6} className="px-6 py-10 text-center text-slate-400">Aucun utilisateur</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-10 text-center text-slate-400">Aucun utilisateur</td></tr>
                 )}
               </tbody>
             </table>

@@ -382,6 +382,7 @@ export default function SettingsPage() {
         <h2 className="font-semibold text-slate-800 mb-1">Test manuel des envois automatiques</h2>
         <p className="text-sm text-slate-500 mb-4">
           Ces boutons déclenchent immédiatement les mêmes endpoints que les crons.
+          L&apos;envoi du rapport mensuel envoie aussi à chaque employé actif son rapport personnel par email.
         </p>
 
         <div className="flex flex-wrap gap-3 mb-4">

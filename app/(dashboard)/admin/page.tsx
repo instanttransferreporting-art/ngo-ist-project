@@ -14,7 +14,7 @@ async function getDashboardData() {
   const todayIsSunday = isSunday(now);
 
   const employees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE" },
+    where: { role: "EMPLOYEE", isActive: true },
     select: { id: true, name: true, email: true, entityId: true, entity: { select: { name: true, color: true } } },
     orderBy: { name: "asc" },
   });
