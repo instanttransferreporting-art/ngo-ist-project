@@ -73,6 +73,12 @@ export function parseTasksFromExcel(buffer: Buffer): ExcelTaskRow[] {
 
 // ─── Export helpers ───────────────────────────────────────────────────────────
 
+/** Excel sheet names must be <=31 chars and cannot contain : \ / ? * [ ] */
+function safeSheetName(name: string): string {
+  const cleaned = name.replace(/[[\]*?/\\:]/g, "").trim();
+  return (cleaned || "Feuille").slice(0, 31);
+}
+
 export function buildDailyExcel(rows: ExcelDailyRow[]): Buffer {
   const ws = XLSX.utils.json_to_sheet(
     rows.map((r) => ({
@@ -148,6 +154,6 @@ export function buildEmployeeExcel(opts: {
   ws["!cols"] = maxLen.map((wch) => ({ wch }));
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `${name} – ${month}`);
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName(`${name} – ${month}`));
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 }

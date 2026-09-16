@@ -24,6 +24,7 @@ export async function GET() {
       name: true,
       email: true,
       role: true,
+      isActive: true,
       createdAt: true,
       entityId: true,
       entity: { select: { id: true, name: true, color: true } },
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
   const hashed = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
     data: { name, email, password: hashed, role, entityId: entityId ?? null },
-    select: { id: true, name: true, email: true, role: true, createdAt: true, entityId: true, entity: { select: { id: true, name: true, color: true } } },
+    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true, entityId: true, entity: { select: { id: true, name: true, color: true } } },
   });
 
   return Response.json(user, { status: 201 });

@@ -68,7 +68,7 @@ async function handler(req: NextRequest) {
     // Keep default values when DB schema is behind code.
   }
 
-  const employees = await prisma.user.findMany({ where: { role: "EMPLOYEE" } });
+  const employees = await prisma.user.findMany({ where: { role: "EMPLOYEE", isActive: true } });
   let sent = 0;
   let skipped = 0;
   let hasPending = false;

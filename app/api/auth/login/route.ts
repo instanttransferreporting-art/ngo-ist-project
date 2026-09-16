@@ -27,6 +27,10 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Email ou mot de passe incorrect" }, { status: 401 });
   }
 
+  if (!user.isActive) {
+    return Response.json({ error: "Ce compte a été suspendu. Contactez un administrateur." }, { status: 403 });
+  }
+
   await createSession({
     userId: user.id,
     email: user.email,
