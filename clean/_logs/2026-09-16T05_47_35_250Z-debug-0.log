@@ -1,0 +1,25 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.9.2
+2 info using node@v22.13.0
+3 silly config load:file:C:\Users\ivan\AppData\Local\nvm\v22.13.0\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project\.npmrc
+5 silly config load:file:C:\Users\ivan\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm run dev
+8 verbose argv "run" "dev" "--cache" "clean" "--force"
+9 verbose logfile logs-max:10 dir:C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project\clean\_logs\2026-09-16T05_47_35_250Z-
+10 verbose logfile C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project\clean\_logs\2026-09-16T05_47_35_250Z-debug-0.log
+11 warn using --force Recommended protections disabled.
+12 silly logfile done cleaning log files
+13 http fetch GET 200 https://registry.npmjs.org/npm 862ms
+14 verbose cwd C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project
+15 verbose os Windows_NT 10.0.26340
+16 verbose node v22.13.0
+17 verbose npm  v10.9.2
+18 notice
+18 notice New [31mmajor[39m version of npm available! [31m10.9.2[39m -> [34m12.0.2[39m
+18 notice Changelog: [34mhttps://github.com/npm/cli/releases/tag/v12.0.2[39m
+18 notice To update run: [4mnpm install -g npm@12.0.2[24m
+18 notice  { force: true, [Symbol(proc-log.meta)]: true }
+19 verbose exit 4294967295
+20 verbose code 4294967295

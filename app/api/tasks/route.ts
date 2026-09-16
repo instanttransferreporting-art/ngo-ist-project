@@ -7,6 +7,7 @@ const createSchema = z.object({
   group: z.string().min(1),
   title: z.string().min(1),
   deadline: z.string().optional(),
+  frequency: z.enum(["DAILY", "MONTHLY"]).default("DAILY"),
   order: z.number().int().default(0),
 });
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendGroupReminderEmail } from "@/lib/email";
 import { getSession } from "@/lib/auth";
 import { isSunday, format } from "date-fns";
+import { splitAssignmentsByFrequency } from "@/lib/utils";
 
 type EmailConfigShape = {
   id: string;
@@ -43,6 +44,7 @@ async function handler(req: NextRequest) {
   const todayIso = format(now, "yyyy-MM-dd");
   const [year, month, day] = todayIso.split("-").map(Number);
   const todayDate = new Date(Date.UTC(year, month - 1, day));
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const dateStr = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 
   const defaultEmailConfig: EmailConfigShape = {
@@ -86,11 +88,22 @@ async function handler(req: NextRequest) {
     if (onLeave > 0) { skipped++; continue; }
 
     // Count pending predefined tasks (assigned but not done today)
-    const totalAssigned = await prisma.taskAssignment.count({ where: { userId: emp.id } });
-    const doneLogs = await prisma.dailyTaskLog.count({
-      where: { userId: emp.id, date: todayDate, type: "PREDEFINED", done: true },
+    const assignments = await prisma.taskAssignment.findMany({
+      where: { userId: emp.id },
+      select: { taskId: true, task: { select: { frequency: true } } },
     });
-    const pending = totalAssigned - doneLogs;
+    const monthLogs = await prisma.dailyTaskLog.findMany({
+      where: { userId: emp.id, date: { gte: monthStart, lte: todayDate } },
+    });
+    const { dailyTaskIds, monthlyStatuses } = splitAssignmentsByFrequency(
+      assignments.map((a) => ({ taskId: a.taskId, frequency: a.task.frequency })),
+      monthLogs
+    );
+    const doneDailyToday = await prisma.dailyTaskLog.count({
+      where: { userId: emp.id, date: todayDate, type: "PREDEFINED", done: true, taskId: { in: [...dailyTaskIds] } },
+    });
+    // MONTHLY tasks stop counting as pending once done anywhere this month.
+    const pending = (dailyTaskIds.size - doneDailyToday) + monthlyStatuses.filter((t) => !t.done).length;
 
     if (pending <= 0) { skipped++; continue; }
 

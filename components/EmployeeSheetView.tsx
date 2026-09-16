@@ -12,6 +12,7 @@ interface TaskLog {
   group: string;
   title: string;
   deadline?: string | null;
+  frequency?: "DAILY" | "MONTHLY";
   executors?: string;
 }
 
@@ -33,6 +34,7 @@ interface Assignment {
   group: string;
   title: string;
   deadline?: string | null;
+  frequency?: "DAILY" | "MONTHLY";
   executors?: string;
 }
 
@@ -542,6 +544,9 @@ export function EmployeeSheetView({
                 <div key={t.taskId} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50">
                   <span className="text-sm text-slate-800">{t.title}</span>
                   <div className="flex items-center gap-2">
+                    {t.frequency === "MONTHLY" && (
+                      <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold uppercase rounded-full">Mensuel</span>
+                    )}
                     {t.deadline && (
                       <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{t.deadline}</span>
                     )}
@@ -627,7 +632,12 @@ export function EmployeeSheetView({
                         {items.map((task) => (
                           <tr key={task.taskId} className="hover:bg-slate-50/60">
                             <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-600" style={{ left: 0, position: "sticky" }} />
-                            <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-800" style={{ left: 220, position: "sticky" }}>{task.title}</td>
+                            <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-800" style={{ left: 220, position: "sticky" }}>
+                              {task.title}
+                              {task.frequency === "MONTHLY" && (
+                                <span className="ml-1.5 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold uppercase rounded-full">Mensuel</span>
+                              )}
+                            </td>
                             <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2 text-slate-500" style={{ left: 560, position: "sticky" }}>{task.deadline ?? "-"}</td>
                             <td className="sticky z-10 bg-white border-r border-b border-slate-200 px-3 py-2" style={{ left: 690, position: "sticky" }}>
                               {task.executors ? (
@@ -825,6 +835,9 @@ export function EmployeeSheetView({
                               <span className={`text-sm flex-1 ${log.done ? "line-through text-slate-400" : "text-slate-800"}`}>
                                 {log.title}
                               </span>
+                              {log.frequency === "MONTHLY" && (
+                                <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold uppercase rounded-full">Mensuel</span>
+                              )}
                               {log.deadline && (
                                 <span className="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{log.deadline}</span>
                               )}

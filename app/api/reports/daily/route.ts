@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { format } from "date-fns";
-import { calcMonthStats, getWorkingDaysOfMonth, isOnLeave, toIsoDate } from "@/lib/utils";
+import { calcMonthStats, getWorkingDaysOfMonth, isOnLeave, toIsoDate, splitAssignmentsByFrequency } from "@/lib/utils";
 
 /**
  * GET /api/reports/daily?date=YYYY-MM-DD
@@ -61,8 +61,11 @@ export async function GET(req: NextRequest) {
         };
       }
 
-      // Assignments count as total predefined
-      const assignments = await prisma.taskAssignment.count({ where: { userId: user.id } });
+      // Assignments (with frequency) count toward total predefined
+      const assignments = await prisma.taskAssignment.findMany({
+        where: { userId: user.id },
+        select: { taskId: true, task: { select: { frequency: true } } },
+      });
 
       const monthStart = new Date(Date.UTC(year, month - 1, 1));
       const workingDaysToDate = getWorkingDaysOfMonth(year, month).filter((d) => toIsoDate(d) <= dateStr);
@@ -78,9 +81,14 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      // Done predefined logs for this day
-      const donePredefinedLogs = await prisma.dailyTaskLog.count({
-        where: { userId: user.id, date, type: "PREDEFINED", done: true },
+      const { dailyTaskIds, monthlyStatuses } = splitAssignmentsByFrequency(
+        assignments.map((a) => ({ taskId: a.taskId, frequency: a.task.frequency })),
+        monthLogs
+      );
+
+      // Done predefined (DAILY) logs for this day
+      const donePredefinedLogsToday = await prisma.dailyTaskLog.count({
+        where: { userId: user.id, date, type: "PREDEFINED", done: true, taskId: { in: [...dailyTaskIds] } },
       });
 
       // Extra tasks for this day
@@ -90,8 +98,11 @@ export async function GET(req: NextRequest) {
       const doneExtra = extraLogs.filter((l) => l.done).length;
       const totalExtra = extraLogs.length;
 
-      const totalPredefined = assignments;
-      const donePredefined = donePredefinedLogs;
+      // MONTHLY tasks count toward "today" until they're done for the month, then they stop
+      // showing up as pending at all — done contributes on the day they're actually checked.
+      const totalPredefined = dailyTaskIds.size + monthlyStatuses.length;
+      const donePredefined =
+        donePredefinedLogsToday + monthlyStatuses.filter((t) => t.done).length;
       const total = totalPredefined + totalExtra;
       const done = donePredefined + doneExtra;
       const percent = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -102,15 +113,15 @@ export async function GET(req: NextRequest) {
         const dayExtra = dayLogs.filter((l) => l.type === "EXTRA");
         return {
           date: ds,
-          totalPredefined: assignments,
-          donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done).length,
+          totalPredefined: dailyTaskIds.size,
+          donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done && l.taskId && dailyTaskIds.has(l.taskId)).length,
           totalExtra: dayExtra.length,
           doneExtra: dayExtra.filter((l) => l.done).length,
           isLeave: isOnLeave(day, monthLeaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate }))),
           isSundayDay: false,
         };
       });
-      const monthStats = calcMonthStats(dayStats);
+      const monthStats = calcMonthStats(dayStats, monthlyStatuses);
 
       return {
         userId: user.id,

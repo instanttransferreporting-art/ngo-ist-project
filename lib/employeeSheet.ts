@@ -47,11 +47,19 @@ export async function getEmployeeSheetData(
         return log?.done ? "✓" : "";
       });
 
-      const doneCount = dayCells.filter((c) => c === "✓").length;
-      const totalDays = dayCells.filter((c) => c !== "Congé").length;
-      const percent = totalDays > 0 ? Math.round((doneCount / totalDays) * 100) : 0;
+      let percent: number;
+      if (a.task.frequency === "MONTHLY") {
+        // Expected once anywhere in the month, not once per working day.
+        const doneInMonth = logs.some((l) => l.taskId === a.taskId && l.done);
+        percent = doneInMonth ? 100 : 0;
+      } else {
+        const doneCount = dayCells.filter((c) => c === "✓").length;
+        const totalDays = dayCells.filter((c) => c !== "Congé").length;
+        percent = totalDays > 0 ? Math.round((doneCount / totalDays) * 100) : 0;
+      }
 
-      rows.push([group, a.task.title, a.task.deadline ?? "", ...dayCells, `${percent}%`]);
+      const title = a.task.frequency === "MONTHLY" ? `${a.task.title} (mensuel)` : a.task.title;
+      rows.push([group, title, a.task.deadline ?? "", ...dayCells, `${percent}%`]);
     }
   }
 

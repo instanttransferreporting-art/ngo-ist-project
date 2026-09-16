@@ -7,6 +7,7 @@ const updateSchema = z.object({
   group: z.string().min(1).optional(),
   title: z.string().min(1).optional(),
   deadline: z.string().optional(),
+  frequency: z.enum(["DAILY", "MONTHLY"]).optional(),
   order: z.number().int().optional(),
 });
 

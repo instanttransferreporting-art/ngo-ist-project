@@ -89,18 +89,66 @@ export interface MonthStats {
   workingDays: number;
 }
 
-export function calcMonthStats(days: DayStats[]): MonthStats {
+// ─── Task frequency helpers ───────────────────────────────────────────────────
+
+export type TaskFrequency = "DAILY" | "MONTHLY";
+
+export interface FrequencyAwareAssignment {
+  taskId: string;
+  frequency: TaskFrequency;
+}
+
+export interface PredefinedLogLite {
+  taskId: string | null;
+  type: string;
+  done: boolean;
+}
+
+export interface MonthlyTaskStatus {
+  taskId: string;
+  done: boolean;
+}
+
+/**
+ * Splits assignments into DAILY (expected every working day, unchanged behavior) and
+ * MONTHLY (expected once anywhere in the month — done as soon as one log in `monthLogs`
+ * is checked, regardless of which day). `monthLogs` should cover the whole scoring period.
+ */
+export function splitAssignmentsByFrequency(
+  assignments: FrequencyAwareAssignment[],
+  monthLogs: PredefinedLogLite[]
+): { dailyTaskIds: Set<string>; monthlyStatuses: MonthlyTaskStatus[] } {
+  const dailyTaskIds = new Set(
+    assignments.filter((a) => a.frequency !== "MONTHLY").map((a) => a.taskId)
+  );
+  const monthlyStatuses = assignments
+    .filter((a) => a.frequency === "MONTHLY")
+    .map((a) => ({
+      taskId: a.taskId,
+      done: monthLogs.some((l) => l.taskId === a.taskId && l.type === "PREDEFINED" && l.done),
+    }));
+  return { dailyTaskIds, monthlyStatuses };
+}
+
+export function calcMonthStats(
+  days: DayStats[],
+  monthlyTasks: MonthlyTaskStatus[] = []
+): MonthStats {
   const activeDays = days.filter((d) => !d.isSundayDay && !d.isLeave);
   const workingDays = activeDays.length;
   const leaveDays = days.filter((d) => !d.isSundayDay && d.isLeave).length;
 
-  const totalPredefined = activeDays.reduce(
+  const totalPredefinedDaily = activeDays.reduce(
     (s, d) => s + d.totalPredefined,
     0
   );
-  const donePredefined = activeDays.reduce((s, d) => s + d.donePredefined, 0);
+  const donePredefinedDaily = activeDays.reduce((s, d) => s + d.donePredefined, 0);
   const totalExtra = activeDays.reduce((s, d) => s + d.totalExtra, 0);
   const doneExtra = activeDays.reduce((s, d) => s + d.doneExtra, 0);
+
+  // MONTHLY-frequency tasks count once for the whole month, not once per working day.
+  const totalPredefined = totalPredefinedDaily + monthlyTasks.length;
+  const donePredefined = donePredefinedDaily + monthlyTasks.filter((t) => t.done).length;
 
   const totalTasks = totalPredefined + totalExtra;
   const totalDone = donePredefined + doneExtra;

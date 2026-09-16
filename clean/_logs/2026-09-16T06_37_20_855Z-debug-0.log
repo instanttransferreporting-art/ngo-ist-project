@@ -1,0 +1,13 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.9.2
+2 info using node@v22.13.0
+3 silly config load:file:C:\Users\ivan\AppData\Local\nvm\v22.13.0\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project\.npmrc
+5 silly config load:file:C:\Users\ivan\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm run dev
+8 verbose argv "run" "dev" "--cache" "clean" "--force"
+9 verbose logfile logs-max:10 dir:C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project\clean\_logs\2026-09-16T06_37_20_855Z-
+10 verbose logfile C:\Users\ivan\Documents\projects\IST\REPORT\ngo-ist-project\clean\_logs\2026-09-16T06_37_20_855Z-debug-0.log
+11 warn using --force Recommended protections disabled.
+12 silly logfile done cleaning log files

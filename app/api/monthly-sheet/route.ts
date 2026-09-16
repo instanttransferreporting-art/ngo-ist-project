@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getWorkingDaysOfMonth, isOnLeave, toIsoDate, calcMonthStats } from "@/lib/utils";
+import { getWorkingDaysOfMonth, isOnLeave, toIsoDate, calcMonthStats, splitAssignmentsByFrequency } from "@/lib/utils";
 import { format } from "date-fns";
 
 /**
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
   // Determine which assignments to show:
   // - Future month: check for a plan; use plan tasks if useCurrentTasks=false
   // - Current/past: use standard TaskAssignment
-  let assignments: Array<{ taskId: string; executors: string; task: { group: string; title: string; deadline: string | null } }>;
+  let assignments: Array<{ taskId: string; executors: string; task: { group: string; title: string; deadline: string | null; frequency: "DAILY" | "MONTHLY" } }>;
 
   if (isFutureMonth) {
     const plan = await prisma.monthlyAssignmentPlan.findUnique({
@@ -167,6 +167,7 @@ export async function GET(req: NextRequest) {
         group: a.task.group,
         title: a.task.title,
         deadline: a.task.deadline,
+        frequency: a.task.frequency,
       };
     });
 
@@ -193,18 +194,22 @@ export async function GET(req: NextRequest) {
       ? []
       : (isCurrentMonth ? workingDays.filter((d) => toIsoDate(d) <= todayDateStr) : workingDays).map((d) => toIsoDate(d))
   );
+  const { dailyTaskIds, monthlyStatuses } = splitAssignmentsByFrequency(
+    assignments.map((a) => ({ taskId: a.taskId, frequency: a.task.frequency })),
+    logs
+  );
   const dayStats = days
     .filter((d) => statsDaySet.has(d.date))
     .map((d) => ({
       date: d.date,
-      totalPredefined: assignments.length,
-      donePredefined: d.predefinedLogs.filter((l) => l.done).length,
+      totalPredefined: dailyTaskIds.size,
+      donePredefined: d.predefinedLogs.filter((l) => l.done && dailyTaskIds.has(l.taskId)).length,
       totalExtra: d.extraLogs.length,
       doneExtra: d.extraLogs.filter((l) => l.done).length,
       isLeave: d.isLeave,
       isSundayDay: false,
     }));
-  const stats = calcMonthStats(dayStats);
+  const stats = calcMonthStats(dayStats, monthlyStatuses);
 
   return Response.json({
     userId,
@@ -224,6 +229,7 @@ export async function GET(req: NextRequest) {
       group: a.task.group,
       title: a.task.title,
       deadline: a.task.deadline,
+      frequency: a.task.frequency,
       executors: a.executors,
     })),
     days,

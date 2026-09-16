@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getWorkingDaysOfMonth, isOnLeave, calcMonthStats, toIsoDate, formatMonthLabel } from "@/lib/utils";
+import { getWorkingDaysOfMonth, isOnLeave, calcMonthStats, toIsoDate, formatMonthLabel, splitAssignmentsByFrequency } from "@/lib/utils";
 import { format } from "date-fns";
 
 /**
@@ -46,8 +46,11 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      // Assignments
-      const assignments = await prisma.taskAssignment.count({ where: { userId: user.id } });
+      // Assignments (with frequency)
+      const assignments = await prisma.taskAssignment.findMany({
+        where: { userId: user.id },
+        select: { taskId: true, task: { select: { frequency: true } } },
+      });
 
       // All logs for the month
       const logs = await prisma.dailyTaskLog.findMany({
@@ -57,18 +60,23 @@ export async function GET(req: NextRequest) {
         },
       });
 
+      const { dailyTaskIds, monthlyStatuses } = splitAssignmentsByFrequency(
+        assignments.map((a) => ({ taskId: a.taskId, frequency: a.task.frequency })),
+        logs
+      );
+
       const dayStats = workingDaysInScope.map((day) => {
         const dayStr = toIsoDate(day);
         const isLeaveDay = isOnLeave(day, leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate })));
         const dayLogs = logs.filter((l) => toIsoDate(new Date(l.date)) === dayStr);
 
-        const donePredefined = dayLogs.filter((l) => l.type === "PREDEFINED" && l.done).length;
+        const donePredefined = dayLogs.filter((l) => l.type === "PREDEFINED" && l.done && l.taskId && dailyTaskIds.has(l.taskId)).length;
         const extraLogs = dayLogs.filter((l) => l.type === "EXTRA");
         const doneExtra = extraLogs.filter((l) => l.done).length;
 
         return {
           date: dayStr,
-          totalPredefined: assignments,
+          totalPredefined: dailyTaskIds.size,
           donePredefined,
           totalExtra: extraLogs.length,
           doneExtra,
@@ -77,7 +85,7 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      const stats = calcMonthStats(dayStats);
+      const stats = calcMonthStats(dayStats, monthlyStatuses);
 
       return {
         userId: user.id,

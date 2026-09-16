@@ -4,7 +4,7 @@ import { sendDailyReportEmail, DailyReportRow } from "@/lib/email";
 import { getSession } from "@/lib/auth";
 import { isSunday, format } from "date-fns";
 import { buildDailyExcel } from "@/lib/excel";
-import { calcMonthStats, getWorkingDaysOfMonth, isOnLeave, toIsoDate } from "@/lib/utils";
+import { calcMonthStats, getWorkingDaysOfMonth, isOnLeave, toIsoDate, splitAssignmentsByFrequency } from "@/lib/utils";
 
 function renderTemplate(template: string, vars: Record<string, string | number>) {
   return template.replace(/\{(\w+)\}/g, (_m, key: string) => String(vars[key] ?? ""));
@@ -108,7 +108,10 @@ async function handler(req: NextRequest) {
         return { name: emp.name, done: 0, total: 0, percent: 0, monthScore20: 0, status: "En congé" as const, entityName: emp.entity?.name, entityColor: emp.entity?.color };
       }
 
-      const total = await prisma.taskAssignment.count({ where: { userId: emp.id } });
+      const assignments = await prisma.taskAssignment.findMany({
+        where: { userId: emp.id },
+        select: { taskId: true, task: { select: { frequency: true } } },
+      });
       const leaves = await prisma.leaveRequest.findMany({
         where: {
           userId: emp.id,
@@ -121,8 +124,13 @@ async function handler(req: NextRequest) {
         where: { userId: emp.id, date: { gte: monthStart, lte: todayDate } },
       });
 
-      const done = await prisma.dailyTaskLog.count({
-        where: { userId: emp.id, date: todayDate, type: "PREDEFINED", done: true },
+      const { dailyTaskIds, monthlyStatuses } = splitAssignmentsByFrequency(
+        assignments.map((a) => ({ taskId: a.taskId, frequency: a.task.frequency })),
+        monthLogs
+      );
+
+      const doneToday = await prisma.dailyTaskLog.count({
+        where: { userId: emp.id, date: todayDate, type: "PREDEFINED", done: true, taskId: { in: [...dailyTaskIds] } },
       });
       const extraDone = await prisma.dailyTaskLog.count({
         where: { userId: emp.id, date: todayDate, type: "EXTRA", done: true },
@@ -131,6 +139,9 @@ async function handler(req: NextRequest) {
         where: { userId: emp.id, date: todayDate, type: "EXTRA" },
       });
 
+      // MONTHLY tasks count toward "today" until done for the month, then stop showing as pending.
+      const total = dailyTaskIds.size + monthlyStatuses.length;
+      const done = doneToday + monthlyStatuses.filter((t) => t.done).length;
       const totalAll = total + extraTotal;
       const doneAll = done + extraDone;
       const percent = totalAll > 0 ? Math.round((doneAll / totalAll) * 100) : 0;
@@ -141,15 +152,15 @@ async function handler(req: NextRequest) {
         const dayExtra = dayLogs.filter((l) => l.type === "EXTRA");
         return {
           date: ds,
-          totalPredefined: total,
-          donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done).length,
+          totalPredefined: dailyTaskIds.size,
+          donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done && l.taskId && dailyTaskIds.has(l.taskId)).length,
           totalExtra: dayExtra.length,
           doneExtra: dayExtra.filter((l) => l.done).length,
           isLeave: isOnLeave(day, leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate }))),
           isSundayDay: false,
         };
       });
-      const monthStats = calcMonthStats(dayStats);
+      const monthStats = calcMonthStats(dayStats, monthlyStatuses);
 
       return {
         name: emp.name,

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getWorkingDaysOfMonth, isOnLeave, toIsoDate, calcMonthStats, formatMonthLabel, getScoreColor, capitalizeFirst } from "@/lib/utils";
+import { getWorkingDaysOfMonth, isOnLeave, toIsoDate, calcMonthStats, formatMonthLabel, getScoreColor, capitalizeFirst, splitAssignmentsByFrequency } from "@/lib/utils";
 import { isSunday, format } from "date-fns";
 import Link from "next/link";
 
@@ -26,11 +26,10 @@ async function getDashboardData() {
   const employeeIds = employees.map((e) => e.id);
 
   // 3 bulk queries instead of N×3 parallel queries — avoids connection pool exhaustion
-  const [assignmentCounts, allLogs, allLeaves] = await Promise.all([
-    prisma.taskAssignment.groupBy({
-      by: ["userId"],
+  const [allAssignments, allLogs, allLeaves] = await Promise.all([
+    prisma.taskAssignment.findMany({
       where: { userId: { in: employeeIds } },
-      _count: { _all: true },
+      select: { userId: true, taskId: true, task: { select: { frequency: true } } },
     }),
     prisma.dailyTaskLog.findMany({
       where: { userId: { in: employeeIds }, date: { gte: monthStart, lte: monthEnd } },
@@ -40,28 +39,28 @@ async function getDashboardData() {
     }),
   ]);
 
-  const assignmentCountMap = Object.fromEntries(
-    assignmentCounts.map((r) => [r.userId, r._count._all])
-  );
-
   const employeeStats = employees.map((emp) => {
-    const assignments = assignmentCountMap[emp.id] ?? 0;
     const logs = allLogs.filter((l) => l.userId === emp.id);
     const leaves = allLeaves.filter((l) => l.userId === emp.id);
+    const { dailyTaskIds, monthlyStatuses } = splitAssignmentsByFrequency(
+      allAssignments.filter((a) => a.userId === emp.id).map((a) => ({ taskId: a.taskId, frequency: a.task.frequency })),
+      logs
+    );
 
     const approvedLeaves = leaves.map((l) => ({ startDate: l.startDate, endDate: l.endDate }));
 
     // Today's status
     const todayOnLeave = !todayIsSunday && isOnLeave(today, approvedLeaves);
     const todayDonePredefined = logs.filter(
-      (l) => toIsoDate(new Date(l.date)) === todayStr && l.done && l.type === "PREDEFINED"
+      (l) => toIsoDate(new Date(l.date)) === todayStr && l.done && l.type === "PREDEFINED" && l.taskId && dailyTaskIds.has(l.taskId)
     ).length;
     const todayExtraLogs = logs.filter(
       (l) => toIsoDate(new Date(l.date)) === todayStr && l.type === "EXTRA"
     );
     const todayDoneExtra = todayExtraLogs.filter((l) => l.done).length;
-    const todayTotal = assignments + todayExtraLogs.length;
-    const todayDone = todayDonePredefined + todayDoneExtra;
+    // MONTHLY tasks count toward "today" until done for the month, then stop showing as pending.
+    const todayTotal = dailyTaskIds.size + monthlyStatuses.length + todayExtraLogs.length;
+    const todayDone = todayDonePredefined + monthlyStatuses.filter((t) => t.done).length + todayDoneExtra;
     const todayPercent = todayTotal > 0 ? Math.round((todayDone / todayTotal) * 100) : 0;
 
     // Monthly stats
@@ -70,8 +69,8 @@ async function getDashboardData() {
       const dayLogs = logs.filter((l) => toIsoDate(new Date(l.date)) === ds);
       return {
         date: ds,
-        totalPredefined: assignments,
-        donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done).length,
+        totalPredefined: dailyTaskIds.size,
+        donePredefined: dayLogs.filter((l) => l.type === "PREDEFINED" && l.done && l.taskId && dailyTaskIds.has(l.taskId)).length,
         totalExtra: dayLogs.filter((l) => l.type === "EXTRA").length,
         doneExtra: dayLogs.filter((l) => l.type === "EXTRA" && l.done).length,
         isLeave: isOnLeave(day, approvedLeaves),
@@ -79,7 +78,7 @@ async function getDashboardData() {
       };
     });
 
-    const monthly = calcMonthStats(dayStats);
+    const monthly = calcMonthStats(dayStats, monthlyStatuses);
 
     return {
       ...emp,

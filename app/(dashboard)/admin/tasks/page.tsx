@@ -10,6 +10,7 @@ interface Task {
   group: string;
   title: string;
   deadline: string | null;
+  frequency: "DAILY" | "MONTHLY";
   order: number;
 }
 
@@ -64,7 +65,7 @@ export default function TasksPage() {
   const [tab, setTab] = useState<"library" | "assign" | "planning" | "import">("library");
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
-  const [form, setForm] = useState({ group: "", title: "", deadline: "", order: "0" });
+  const [form, setForm] = useState({ group: "", title: "", deadline: "", frequency: "DAILY" as "DAILY" | "MONTHLY", order: "0" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -350,13 +351,13 @@ export default function TasksPage() {
 
   function openCreate() {
     setEditTask(null);
-    setForm({ group: "", title: "", deadline: "", order: "0" });
+    setForm({ group: "", title: "", deadline: "", frequency: "DAILY", order: "0" });
     setShowForm(true);
   }
 
   function openEdit(task: Task) {
     setEditTask(task);
-    setForm({ group: task.group, title: task.title, deadline: task.deadline ?? "", order: String(task.order) });
+    setForm({ group: task.group, title: task.title, deadline: task.deadline ?? "", frequency: task.frequency ?? "DAILY", order: String(task.order) });
     setShowForm(true);
   }
 
@@ -364,7 +365,7 @@ export default function TasksPage() {
     e.preventDefault();
     setSaving(true);
     setError("");
-    const body = { group: form.group, title: form.title, deadline: form.deadline || undefined, order: parseInt(form.order) };
+    const body = { group: form.group, title: form.title, deadline: form.deadline || undefined, frequency: form.frequency, order: parseInt(form.order) };
     const res = editTask
       ? await fetch(`/api/tasks/${editTask.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -622,6 +623,20 @@ export default function TasksPage() {
                 </datalist>
               </div>
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Fréquence</label>
+                <select
+                  value={form.frequency}
+                  onChange={(e) => setForm({ ...form, frequency: e.target.value as "DAILY" | "MONTHLY" })}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
+                >
+                  <option value="DAILY">Quotidienne — à cocher chaque jour ouvré</option>
+                  <option value="MONTHLY">Mensuelle — comptée une seule fois par mois</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Une tâche mensuelle ne fait plus baisser le score les jours où elle n&apos;est pas cochée : elle compte comme faite pour tout le mois dès qu&apos;elle est cochée une fois.
+                </p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Ordre d&apos;affichage</label>
                 <input
                   type="number" value={form.order} min="0"
@@ -665,7 +680,12 @@ export default function TasksPage() {
               {groupTasks.map((task) => (
                 <div key={task.id} className="flex items-center gap-3 px-6 py-3 hover:bg-slate-50 border-b border-slate-50">
                   <div className="flex-1">
-                    <div className="text-sm text-slate-800">{task.title}</div>
+                    <div className="text-sm text-slate-800 flex items-center gap-2">
+                      {task.title}
+                      {task.frequency === "MONTHLY" && (
+                        <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold uppercase rounded-full">Mensuel</span>
+                      )}
+                    </div>
                     {task.deadline && <div className="text-xs text-slate-400 mt-0.5">Délai: {task.deadline}</div>}
                   </div>
                   <div className="flex items-center gap-2">

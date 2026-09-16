@@ -43,6 +43,12 @@ enum SheetTemplate {
   B
 }
 
+/// How often a task is expected to be done: every working day, or once a month.
+enum TaskFrequency {
+  DAILY
+  MONTHLY
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 /// Sub-group / department for employees, with a distinctive color used in reports.
@@ -76,12 +82,13 @@ model User {
 }
 
 model TaskLibrary {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   group       String
   title       String
   deadline    String?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
+  frequency   TaskFrequency @default(DAILY)
+  order       Int           @default(0)
+  createdAt   DateTime      @default(now())
 
   assignments     TaskAssignment[]
   dailyLogs       DailyTaskLog[]
